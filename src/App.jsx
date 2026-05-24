@@ -1,4 +1,14 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
+import { db, auth } from "./firebase";
+import {
+  collection, onSnapshot, doc, setDoc, addDoc,
+  updateDoc, deleteDoc, query, orderBy, serverTimestamp
+} from "firebase/firestore";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut, onAuthStateChanged
+} from "firebase/auth";
 
 // ═══════════════════════════════════════════════════════════════
 //  DATOS INICIALES
@@ -18,8 +28,8 @@ const initProducts = [
 ];
 
 const initUsers = [
-
-  { id: "u1", name: "Carlos Pérez", email: "carlos@mail.com", password: "123456", phone: "9987654321", address: "Av. Insurgentes #88", joinDate: "2026-04-15", role: "user" },
+  { id: "u1", name: "María López", email: "maria@mail.com", password: "123456", phone: "9981234567", address: "Calle 10 #25, Col. Centro", joinDate: "2026-04-01", role: "user" },
+  { id: "u2", name: "Carlos Pérez", email: "carlos@mail.com", password: "123456", phone: "9987654321", address: "Av. Insurgentes #88", joinDate: "2026-04-15", role: "user" },
 ];
 
 const initOrders = [
@@ -202,30 +212,34 @@ const CreditBar = ({ paid, total }) => {
 // ═══════════════════════════════════════════════════════════════
 //  AUTH — Login / Registro
 // ═══════════════════════════════════════════════════════════════
-const AuthScreen = ({ onLogin, users, setUsers }) => {
-  const [mode, setMode] = useState("login"); // login | register
+const AuthScreen = ({ onLogin, onRegister, users, setUsers }) => {
+  const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", address: "" });
   const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleLogin = () => {
-    setErr("");
-    if (form.email === ADMIN_CREDENTIALS.email && form.password === ADMIN_CREDENTIALS.password) {
-      onLogin({ id: "admin", name: "Administrador", email: form.email, role: "admin" });
-      return;
+  const handleLogin = async () => {
+    setErr(""); setLoading(true);
+    try {
+      await onLogin(form.email, form.password);
+    } catch (e) {
+      setErr("Correo o contraseña incorrectos.");
     }
-    const u = users.find(u => u.email === form.email && u.password === form.password);
-    if (!u) { setErr("Correo o contraseña incorrectos."); return; }
-    onLogin(u);
+    setLoading(false);
   };
 
-  const handleRegister = () => {
-    setErr("");
-    if (!form.name || !form.email || !form.password || !form.phone) { setErr("Completa todos los campos."); return; }
-    if (users.find(u => u.email === form.email)) { setErr("Este correo ya está registrado."); return; }
-    const newUser = { ...form, id: uid(), joinDate: today(), role: "user" };
-    setUsers(u => [...u, newUser]);
-    onLogin(newUser);
+  const handleRegister = async () => {
+    setErr(""); setLoading(true);
+    if (!form.name || !form.email || !form.password || !form.phone) {
+      setErr("Completa todos los campos."); setLoading(false); return;
+    }
+    try {
+      await onRegister(form);
+    } catch (e) {
+      setErr(e.code === "auth/email-already-in-use" ? "Este correo ya está registrado." : "Error al registrar. Intenta de nuevo.");
+    }
+    setLoading(false);
   };
 
   return (
@@ -277,15 +291,15 @@ const AuthScreen = ({ onLogin, users, setUsers }) => {
 
             {err && <div style={{ background: C.redDim, border: `1px solid ${C.red}44`, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: C.red }}>{err}</div>}
 
-            <Btn full size="lg" onClick={mode === "login" ? handleLogin : handleRegister} style={{ marginTop: 4 }}>
-              {mode === "login" ? "🔑 Entrar" : "✨ Crear mi cuenta"}
+            <Btn full size="lg" onClick={mode === "login" ? handleLogin : handleRegister} disabled={loading} style={{ marginTop: 4 }}>
+              {loading ? "⏳ Cargando..." : mode === "login" ? "🔑 Entrar" : "✨ Crear mi cuenta"}
             </Btn>
           </div>
 
           {mode === "login" && (
             <div style={{ marginTop: 18, padding: 14, background: C.accentDim, borderRadius: 10, fontSize: 12, color: C.muted }}>
               <strong style={{ color: C.accent }}>Admin:</strong> admin@pelusastore.com / pelusa123<br />
-              <strong style={{ color: C.accent }}>Cliente:</strong> maria@mail.com / 123456
+              <strong style={{ color: C.accent }}>Cliente demo:</strong> Regístrate con tu correo
             </div>
           )}
         </Card>
@@ -1175,6 +1189,7 @@ const USER_TABS = [
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [products, setProducts] = useState(initProducts);
   const [users, setUsers] = useState(initUsers);
   const [orders, setOrders] = useState(initOrders);
@@ -1185,10 +1200,272 @@ export default function App() {
   const isAdmin = currentUser?.role === "admin";
   const tabs = isAdmin ? ADMIN_TABS : USER_TABS;
 
+  // ── Firebase Auth listener ──────────────────────────────────
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (fireUser) => {
+      if (fireUser) {
+        if (fireUser.email === ADMIN_CREDENTIALS.email) {
+          setCurrentUser({ id: "admin", name: "Administrador", email: fireUser.email, role: "admin" });
+        } else {
+          // Find user profile in Firestore
+          const snap = await import("firebase/firestore").then(m =>
+            m.getDoc(m.doc(db, "users", fireUser.uid))
+          );
+          if (snap.exists()) {
+            setCurrentUser({ id: fireUser.uid, ...snap.data() });
+          }
+        }
+      } else {
+        setCurrentUser(null);
+      }
+      setAuthLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  // ── Firestore: productos en tiempo real ─────────────────────
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "products"), (snap) => {
+      if (!snap.empty) {
+        setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    });
+    return unsub;
+  }, []);
+
+  // ── Firestore: pedidos en tiempo real ───────────────────────
+  useEffect(() => {
+    const unsub = onSnapshot(
+      query(collection(db, "orders"), orderBy("date", "desc")),
+      (snap) => {
+        if (!snap.empty) {
+          setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }
+      }
+    );
+    return unsub;
+  }, []);
+
+  // ── Firestore: usuarios en tiempo real ──────────────────────
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "users"), (snap) => {
+      if (!snap.empty) {
+        setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    });
+    return unsub;
+  }, []);
+
   useEffect(() => {
     if (isAdmin) setTab("stats");
     else setTab("catalog");
   }, [currentUser]);
+
+  // ── Handlers Firebase ───────────────────────────────────────
+  const handleLogin = async (email, password) => {
+    await signInWithEmailAndPassword(auth, email, password);
+  };
+
+  const handleRegister = async (userData) => {
+    const cred = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+    const { password, ...safeData } = userData;
+    await setDoc(doc(db, "users", cred.user.uid), {
+      ...safeData, role: "user", joinDate: today(),
+    });
+  };
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    setCart([]);
+  };
+
+  const setProductsFirebase = async (updater) => {
+    const updated = typeof updater === "function" ? updater(products) : updater;
+    // Sync each product to Firestore
+    for (const p of updated) {
+      const { id, ...data } = p;
+      await setDoc(doc(db, "products", String(id)), data);
+    }
+  };
+
+  const setOrdersFirebase = async (updater) => {
+    const updated = typeof updater === "function" ? updater(orders) : updater;
+    for (const o of updated) {
+      const { id, ...data } = o;
+      await setDoc(doc(db, "orders", String(id)), data);
+    }
+  };
+
+  const addToCart = (product, priceMode) => {
+    const price = priceMode === "credito" ? product.priceCredito : product.priceContado;
+    setCart(c => {
+      const exists = c.find(i => i.productId === product.id && i.type === priceMode);
+      if (exists) return c.map(i => i.productId === product.id && i.type === priceMode ? { ...i, qty: i.qty + 1 } : i);
+      return [...c, { productId: product.id, name: product.name, image: product.image, price, type: priceMode, qty: 1 }];
+    });
+  };
+
+  if (authLoading) return (
+    <>
+      <style>{G}</style>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#070707" }}>
+        <div style={{ textAlign: "center" }}>
+          <img src={LOGO_URL} alt="Pelusa Store" style={{ width: 80, marginBottom: 20, opacity: 0.8 }} />
+          <div style={{ color: GOLD, fontFamily: "Cinzel", fontSize: 14, letterSpacing: "0.2em" }}>CARGANDO...</div>
+        </div>
+      </div>
+    </>
+  );
+
+  if (!currentUser) return (
+    <>
+      <style>{G}</style>
+      <AuthScreen
+        onLogin={handleLogin}
+        onRegister={handleRegister}
+        users={users}
+        setUsers={setUsers}
+      />
+    </>
+  );
+
+  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
+
+  return (
+    <>
+      <style>{G}</style>
+      <div style={{ minHeight: "100vh", background: C.bg }}>
+        {/* NAV */}
+        <nav style={{
+          background: C.surface, borderBottom: `1px solid ${C.border}`,
+          padding: "0 20px", position: "sticky", top: 0, zIndex: 500,
+        }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", gap: 4, overflowX: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 0", marginRight: 16, whiteSpace: "nowrap" }}>
+              <div style={{ width: 36, height: 36, background: "#000",
+                border: `1px solid ${GOLD}44`, borderRadius: 8, overflow: "hidden",
+                display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <img src={LOGO_URL} alt="Pelusa Store" style={{ width: "90%", height: "90%", objectFit: "contain" }} />
+              </div>
+              <span style={{ fontFamily: "Cinzel", fontSize: 15, fontWeight: 700,
+                background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT})`,
+                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                {isAdmin ? "PELUSA · ADMIN" : "PELUSA STORE"}
+              </span>
+            </div>
+            {tabs.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{
+                background: "none",
+                borderBottom: `2px solid ${tab === t.id ? GOLD : "transparent"}`,
+                border: "none", borderBottom: `2px solid ${tab === t.id ? GOLD : "transparent"}`,
+                color: tab === t.id ? GOLD : C.muted,
+                padding: "18px 14px", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap",
+              }}>{t.label}</button>
+            ))}
+            <div style={{ flex: 1 }} />
+            {!isAdmin && (
+              <button onClick={() => setCartOpen(true)} style={{
+                background: cart.length > 0 ? GOLD : C.surface,
+                border: `1px solid ${cart.length > 0 ? GOLD : C.border}`,
+                color: cart.length > 0 ? "#000" : C.muted,
+                borderRadius: 999, padding: "6px 16px", fontSize: 13, fontWeight: 700,
+                display: "flex", alignItems: "center", gap: 6, marginRight: 8,
+              }}>
+                🛒 {cart.length > 0 ? `${cart.length} · ${fmt(cartTotal)}` : "Carrito"}
+              </button>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{
+                width: 32, height: 32, background: GOLD_DIM, border: `1px solid ${GOLD}44`,
+                borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 14, fontWeight: 800, color: GOLD,
+              }}>{currentUser.name[0]}</div>
+              <button onClick={handleLogout} style={{
+                background: "none", border: `1px solid ${C.border}`,
+                color: C.muted, borderRadius: 6, padding: "5px 10px", fontSize: 12,
+              }}>Salir</button>
+            </div>
+          </div>
+        </nav>
+
+        {/* CONTENIDO */}
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 20px" }}>
+          {!isAdmin && tab === "catalog" && (
+            <div style={{ marginBottom: 28 }}>
+              <div style={{
+                background: `linear-gradient(135deg, #000 60%, #1a1400)`,
+                border: `1px solid ${GOLD}33`,
+                borderRadius: 20, padding: "28px 32px",
+                display: "flex", alignItems: "center", gap: 24, marginBottom: 8,
+                position: "relative", overflow: "hidden",
+              }}>
+                <div style={{
+                  position: "absolute", top: -40, right: -40, width: 200, height: 200,
+                  background: `radial-gradient(circle, ${GOLD}22 0%, transparent 70%)`,
+                  pointerEvents: "none",
+                }} />
+                <img src={LOGO_URL} alt="Pelusa Store" style={{ width: 80, height: 80, objectFit: "contain", flexShrink: 0 }} />
+                <div>
+                  <h1 style={{
+                    fontFamily: "Cinzel", fontSize: 22, fontWeight: 800,
+                    background: `linear-gradient(135deg, ${GOLD}, ${GOLD_LIGHT}, ${GOLD})`,
+                    WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", marginBottom: 6,
+                  }}>
+                    Bienvenid@, {currentUser.name.split(" ")[0]} ✨
+                  </h1>
+                  <p style={{ color: C.muted, fontSize: 14, lineHeight: 1.6 }}>
+                    Catálogo exclusivo Pelusa Store · Precios contado y crédito semanal
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          {isAdmin && (
+            <div style={{ marginBottom: 24 }}>
+              <h1 style={{ fontFamily: "Cinzel", fontSize: 26, fontWeight: 800, marginBottom: 4 }}>
+                {tabs.find(t => t.id === tab)?.label}
+              </h1>
+            </div>
+          )}
+
+          {tab === "catalog" && <Catalog products={products} onAddToCart={addToCart} cart={cart} />}
+          {tab === "orders" && !isAdmin && <MyOrders orders={orders} userId={currentUser.id} />}
+          {tab === "stats" && isAdmin && <AdminStats orders={orders} products={products} users={users} />}
+          {tab === "products" && isAdmin && <AdminProducts products={products} setProducts={setProductsFirebase} />}
+          {tab === "orders" && isAdmin && <AdminOrders orders={orders} setOrders={setOrdersFirebase} users={users} />}
+          {tab === "users" && isAdmin && <AdminUsers users={users} orders={orders} />}
+        </div>
+
+        <Modal open={cartOpen} onClose={() => setCartOpen(false)} title="Tu carrito" wide>
+          <Cart
+            cart={cart} setCart={setCart}
+            user={currentUser} orders={orders} setOrders={setOrdersFirebase}
+            onClose={() => { setCartOpen(false); setTab("orders"); }}
+          />
+        </Modal>
+
+        {!isAdmin && (
+          <a href={buildWALink(`Hola Pelusa Store 👋 Soy ${currentUser.name}, me gustaría hacer una consulta sobre su catálogo.`)}
+            target="_blank" rel="noreferrer"
+            style={{
+              position: "fixed", bottom: 24, right: 24, zIndex: 900,
+              width: 56, height: 56, borderRadius: 999, background: "#25D366",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 4px 20px rgba(37,211,102,0.45)", transition: "transform .2s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = "scale(1.1)"}
+            onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}
+          >
+            <svg width={26} height={26} viewBox="0 0 24 24" fill="white">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+            </svg>
+          </a>
+        )}
+      </div>
+    </>
+  );
+}
 
   const addToCart = (product, priceMode) => {
     const price = priceMode === "credito" ? product.priceCredito : product.priceContado;
