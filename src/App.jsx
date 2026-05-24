@@ -18,8 +18,8 @@ const initProducts = [
 ];
 
 const initUsers = [
-  { id: "u1", name: "María López", email: "maria@mail.com", password: "123456", phone: "9981234567", address: "Calle 10 #25, Col. Centro", joinDate: "2026-04-01", role: "user" },
-  { id: "u2", name: "Carlos Pérez", email: "carlos@mail.com", password: "123456", phone: "9987654321", address: "Av. Insurgentes #88", joinDate: "2026-04-15", role: "user" },
+
+  { id: "u1", name: "Carlos Pérez", email: "carlos@mail.com", password: "123456", phone: "9987654321", address: "Av. Insurgentes #88", joinDate: "2026-04-15", role: "user" },
 ];
 
 const initOrders = [
