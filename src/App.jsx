@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 //  DATOS INICIALES
 // ═══════════════════════════════════════════════════════════════
 const ADMIN_CREDENTIALS = { email: "admin@pelusastore.com", password: "pelusa123" };
-const LOGO_URL = "/src/logo.jpeg";
+const LOGO_URL = "/logo.jpeg";
 const STORE_NAME = "Pelusa Store";
 
 const CATEGORIES = ["Todo", "Perfumes", "Ropa", "Calzado", "Belleza", "Consumibles", "Hogar", "Otros"];
