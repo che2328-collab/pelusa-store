@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "528148137033"; // ← CAMBIA POR TU NÚMERO
+const WA_NUMBER = "5219981234567"; // ← CAMBIA POR TU NÚMERO
 const buildWALink = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
 
 const C = {
@@ -1471,16 +1471,19 @@ export default function App() {
     });
   };
 
-  if (!currentUser) return (
+  if (authLoading) return (
     <>
       <style>{G}</style>
-      <AuthScreen onLogin={setCurrentUser} users={users} setUsers={setUsers} />
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#070707" }}>
+        <div style={{ textAlign: "center" }}>
+          <img src={LOGO_URL} alt="Pelusa Store" style={{ width: 80, marginBottom: 20, opacity: 0.8 }} />
+          <div style={{ color: GOLD, fontFamily: "Cinzel", fontSize: 14, letterSpacing: "0.2em" }}>CARGANDO...</div>
+        </div>
+      </div>
     </>
   );
 
-  const cartTotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
-
-  return (
+  if (!currentUser) return (
     <>
       <style>{G}</style>
       <div style={{ minHeight: "100vh", background: C.bg }}>
