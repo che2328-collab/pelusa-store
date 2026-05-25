@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "528148137033"; // ← CAMBIA POR TU NÚMERO
+const WA_NUMBER = "5219981234567"; // ← CAMBIA POR TU NÚMERO
 const buildWALink = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
 
 const C = {
@@ -282,7 +282,17 @@ const AuthScreen = ({ onLogin, onRegister, users, setUsers }) => {
             {mode === "register" && (
               <>
                 <Field label="Nombre completo"><input value={form.name} onChange={e => set("name", e.target.value)} placeholder="Tu nombre" /></Field>
-                <Field label="Teléfono / WhatsApp"><input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="9981234567" /></Field>
+                <Field label="Teléfono / WhatsApp">
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <div style={{
+                      background: "#0a0a0a", border: `1px solid ${C.border}`, borderRadius: 8,
+                      padding: "10px 12px", fontSize: 14, color: GOLD, fontWeight: 700,
+                      whiteSpace: "nowrap", display: "flex", alignItems: "center",
+                    }}>🇲🇽 +52</div>
+                    <input value={form.phone} onChange={e => set("phone", e.target.value.replace(/\D/g, "").slice(0, 10))}
+                      placeholder="10 dígitos" style={{ flex: 1 }} />
+                  </div>
+                </Field>
                 <Field label="Dirección de entrega"><input value={form.address} onChange={e => set("address", e.target.value)} placeholder="Calle, colonia, número" /></Field>
               </>
             )}
@@ -519,15 +529,19 @@ const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
 
       {payType === "credito" && (
         <Field label={`Semanas para pagar (abono: ${fmt(weekAbono(total, weeks))}/sem)`}>
-          <div style={{ display: "flex", gap: 8 }}>
-            {[3, 4, 5, 6, 8].map(w => (
-              <button key={w} onClick={() => setWeeks(w)} style={{
-                flex: 1, background: weeks === w ? C.accent : C.surface,
-                border: `1px solid ${weeks === w ? C.accent : C.border}`,
-                color: weeks === w ? "#fff" : C.muted,
-                borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700,
-              }}>{w}</button>
-            ))}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {(() => {
+              const maxW = Math.max(...cart.map(i => i.maxWeeks || 8));
+              const opts = [2,3,4,5,6,8,10,12].filter(w => w <= maxW);
+              return opts.map(w => (
+                <button key={w} onClick={() => setWeeks(w)} style={{
+                  flex: 1, background: weeks === w ? C.accent : C.surface,
+                  border: `1px solid ${weeks === w ? C.accent : C.border}`,
+                  color: weeks === w ? "#fff" : C.muted,
+                  borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 700,
+                }}>{w}</button>
+              ));
+            })()}
           </div>
         </Field>
       )}
@@ -741,6 +755,11 @@ const AdminProducts = ({ products, setProducts }) => {
           </Field>
           <Field label="Precio contado"><input type="number" value={form.priceContado || ""} onChange={e => set("priceContado", e.target.value)} /></Field>
           <Field label="Precio crédito"><input type="number" value={form.priceCredito || ""} onChange={e => set("priceCredito", e.target.value)} /></Field>
+          <Field label="Máximo de semanas a crédito">
+            <select value={form.maxWeeks || 8} onChange={e => set("maxWeeks", +e.target.value)}>
+              {[2,3,4,5,6,8,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
+            </select>
+          </Field>
           <Field label="Stock"><input type="number" value={form.stock || ""} onChange={e => set("stock", e.target.value)} /></Field>
           <div style={{ display: "flex", gap: 16, alignItems: "center", paddingTop: 20 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, textTransform: "none", fontSize: 14, color: C.text }}>
@@ -977,8 +996,21 @@ const AdminOrders = ({ orders, setOrders, users }) => {
 // ═══════════════════════════════════════════════════════════════
 //  ADMIN: CLIENTES
 // ═══════════════════════════════════════════════════════════════
-const AdminUsers = ({ users, orders }) => {
+const AdminUsers = ({ users, orders, setUsers }) => {
   const [sel, setSel] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const setE = (k, v) => setEditForm(f => ({ ...f, [k]: v }));
+
+  const saveUserEdit = async () => {
+    await setDoc(doc(db, "users", sel.user.id), {
+      ...sel.user, ...editForm,
+      phone: editForm.phone?.startsWith("+52") ? editForm.phone : "+52" + (editForm.phone || "").replace(/\D/g, ""),
+    }, { merge: true });
+    setUsers(us => us.map(u => u.id === sel.user.id ? { ...u, ...editForm } : u));
+    setEditing(false);
+    alert("✅ Datos actualizados");
+  };
 
   const userStats = (uid) => {
     const uOrders = orders.filter(o => o.userId === uid);
@@ -1024,22 +1056,45 @@ const AdminUsers = ({ users, orders }) => {
         </table>
       </Card>
 
-      <Modal open={!!sel} onClose={() => setSel(null)} title={sel?.user?.name} wide>
+      <Modal open={!!sel} onClose={() => { setSel(null); setEditing(false); }} title={sel?.user?.name} wide>
         {sel && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              {[
-                { label: "Correo", v: sel.user.email },
-                { label: "Teléfono", v: sel.user.phone },
-                { label: "Dirección", v: sel.user.address },
-                { label: "Miembro desde", v: sel.user.joinDate },
-              ].map(x => (
-                <div key={x.label}>
-                  <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", marginBottom: 3 }}>{x.label}</div>
-                  <div style={{ fontSize: 14 }}>{x.v}</div>
+            {!editing ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  {[
+                    { label: "Correo", v: sel.user.email },
+                    { label: "Teléfono", v: sel.user.phone },
+                    { label: "Dirección", v: sel.user.address },
+                    { label: "Miembro desde", v: sel.user.joinDate },
+                  ].map(x => (
+                    <div key={x.label}>
+                      <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", marginBottom: 3 }}>{x.label}</div>
+                      <div style={{ fontSize: 14 }}>{x.v}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <Btn size="sm" onClick={() => { setEditForm({ name: sel.user.name, phone: sel.user.phone, address: sel.user.address }); setEditing(true); }}>
+                  ✏️ Editar datos del cliente
+                </Btn>
+              </>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ fontWeight: 700, color: GOLD, marginBottom: 4 }}>✏️ Editar datos</div>
+                <Field label="Nombre"><input value={editForm.name || ""} onChange={e => setE("name", e.target.value)} /></Field>
+                <Field label="Teléfono">
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <div style={{ background: "#0a0a0a", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 14, color: GOLD, fontWeight: 700, whiteSpace: "nowrap" }}>🇲🇽 +52</div>
+                    <input value={(editForm.phone || "").replace("+52", "")} onChange={e => setE("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10 dígitos" style={{ flex: 1 }} />
+                  </div>
+                </Field>
+                <Field label="Dirección"><input value={editForm.address || ""} onChange={e => setE("address", e.target.value)} /></Field>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <Btn variant="ghost" onClick={() => setEditing(false)}>Cancelar</Btn>
+                  <Btn onClick={saveUserEdit}>💾 Guardar cambios</Btn>
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 12 }}>
               <StatCard label="Pedidos" value={sel.orders} icon="📋" />
               <StatCard label="Total comprado" value={fmt(sel.total)} color={C.accent} icon="💰" />
@@ -1262,7 +1317,9 @@ export default function App() {
     const cred = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
     const { password, ...safeData } = userData;
     await setDoc(doc(db, "users", cred.user.uid), {
-      ...safeData, role: "user", joinDate: today(),
+      ...safeData,
+      phone: "+52" + userData.phone,
+      role: "user", joinDate: today(),
     });
   };
 
