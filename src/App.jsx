@@ -57,7 +57,8 @@ const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
 const WA_NUMBER = "5219981234567"; // ← TU NÚMERO (para que clientes te contacten)
 const buildWALink = (msg, number) => {
-  const num = number ? number.replace(/\D/g, "") : WA_NUMBER;
+  const clean = (number || "").replace(/\D/g, "");
+  const num = clean.length >= 10 ? clean : WA_NUMBER;
   return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
 };
 
@@ -934,13 +935,21 @@ const AdminOrders = ({ orders, setOrders, users }) => {
                       {/* WhatsApp: recordatorio de pago */}
                       {(() => {
                         const sugerido = weekAbono(sel.total, sel.semanasTotal);
-                        const clientPhone = sel.customerPhone || "";
+                        const clientUser = users.find(u => u.id === sel.userId);
+                        const clientPhone = sel.customerPhone || clientUser?.phone || "";
+                        const hasPhone = clientPhone.replace(/\D/g, "").length >= 10;
                         const msgRecordatorio = `Hola ${sel.customerName} 👋\n\nTe recordamos que tienes un abono pendiente de tu pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n💰 Abono semanal: $${sugerido.toLocaleString()} MXN\n📊 Saldo pendiente: $${sel.saldoPendiente.toLocaleString()} MXN\n\n¡Gracias por tu confianza! 🙏`;
                         const msgConfirmacion = abonoAmt
                           ? `Hola ${sel.customerName} ✅\n\nHemos registrado tu abono de *$${Number(abonoAmt).toLocaleString()} MXN* para el pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n📊 Nuevo saldo pendiente: *$${Math.max(0, sel.saldoPendiente - +abonoAmt).toLocaleString()} MXN*\n\n¡Muchas gracias por tu pago! 🙌`
                           : null;
                         return (
                           <>
+                            {!hasPhone && (
+                              <div style={{ fontSize: 12, color: C.red, padding: "6px 10px",
+                                background: C.redDim, borderRadius: 6, width: "100%" }}>
+                                ⚠️ Este cliente no tiene teléfono registrado
+                              </div>
+                            )}
                             <a href={buildWALink(msgRecordatorio, clientPhone)} target="_blank" rel="noreferrer" style={{
                               display: "inline-flex", alignItems: "center", gap: 6,
                               background: "#25D36622", border: "1px solid #25D36644", color: "#25D366",
