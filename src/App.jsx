@@ -55,8 +55,11 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "5219981234567"; // ← CAMBIA POR TU NÚMERO
-const buildWALink = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
+const WA_NUMBER = "5219981234567"; // ← TU NÚMERO (para que clientes te contacten)
+const buildWALink = (msg, number) => {
+  const num = number ? number.replace(/\D/g, "") : WA_NUMBER;
+  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+};
 
 const C = {
   bg: "#070707",
@@ -451,6 +454,7 @@ const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
   const confirm = () => {
     const order = {
       id: ordId(), userId: user.id, customerName: user.name,
+      customerPhone: user.phone || "",
       items: cart.map(i => ({ ...i, type: payType })),
       total, type: payType, status: payType === "contado" ? "pagado" : "activo",
       date: today(),
@@ -929,15 +933,15 @@ const AdminOrders = ({ orders, setOrders, users }) => {
                       <Btn onClick={() => addAbono(sel.id)}>✅ Registrar abono</Btn>
                       {/* WhatsApp: recordatorio de pago */}
                       {(() => {
-                        const user = sel;
                         const sugerido = weekAbono(sel.total, sel.semanasTotal);
+                        const clientPhone = sel.customerPhone || "";
                         const msgRecordatorio = `Hola ${sel.customerName} 👋\n\nTe recordamos que tienes un abono pendiente de tu pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n💰 Abono semanal: $${sugerido.toLocaleString()} MXN\n📊 Saldo pendiente: $${sel.saldoPendiente.toLocaleString()} MXN\n\n¡Gracias por tu confianza! 🙏`;
                         const msgConfirmacion = abonoAmt
                           ? `Hola ${sel.customerName} ✅\n\nHemos registrado tu abono de *$${Number(abonoAmt).toLocaleString()} MXN* para el pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n📊 Nuevo saldo pendiente: *$${Math.max(0, sel.saldoPendiente - +abonoAmt).toLocaleString()} MXN*\n\n¡Muchas gracias por tu pago! 🙌`
                           : null;
                         return (
                           <>
-                            <a href={buildWALink(msgRecordatorio)} target="_blank" rel="noreferrer" style={{
+                            <a href={buildWALink(msgRecordatorio, clientPhone)} target="_blank" rel="noreferrer" style={{
                               display: "inline-flex", alignItems: "center", gap: 6,
                               background: "#25D36622", border: "1px solid #25D36644", color: "#25D366",
                               borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, textDecoration: "none",
@@ -946,7 +950,7 @@ const AdminOrders = ({ orders, setOrders, users }) => {
                               Recordatorio de pago
                             </a>
                             {msgConfirmacion && (
-                              <a href={buildWALink(msgConfirmacion)} target="_blank" rel="noreferrer" style={{
+                              <a href={buildWALink(msgConfirmacion, clientPhone)} target="_blank" rel="noreferrer" style={{
                                 display: "inline-flex", alignItems: "center", gap: 6,
                                 background: "#25D36622", border: "1px solid #25D36644", color: "#25D366",
                                 borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, textDecoration: "none",
