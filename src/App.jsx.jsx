@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "5219981234567"; // ← CAMBIA POR TU NÚMERO
+const WA_NUMBER = "528148137033"; // ← CAMBIA POR TU NÚMERO
 const buildWALink = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
 
 const C = {
