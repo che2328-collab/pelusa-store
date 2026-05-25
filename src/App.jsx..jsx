@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { db, auth } from "./firebase";
 import {
-  collection, onSnapshot, doc, setDoc, addDoc,
-  updateDoc, deleteDoc, query, orderBy, serverTimestamp
+  collection, onSnapshot, doc, setDoc,
+  updateDoc, deleteDoc, query, orderBy, getDoc
 } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword,
@@ -1202,10 +1202,7 @@ export default function App() {
         if (fireUser.email === ADMIN_CREDENTIALS.email) {
           setCurrentUser({ id: "admin", name: "Administrador", email: fireUser.email, role: "admin" });
         } else {
-          // Find user profile in Firestore
-          const snap = await import("firebase/firestore").then(m =>
-            m.getDoc(m.doc(db, "users", fireUser.uid))
-          );
+          const snap = await getDoc(doc(db, "users", fireUser.uid));
           if (snap.exists()) {
             setCurrentUser({ id: fireUser.uid, ...snap.data() });
           }
