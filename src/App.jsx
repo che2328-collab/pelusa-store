@@ -326,6 +326,22 @@ const Catalog = ({ products, onAddToCart, cart }) => {
   const [priceMode, setPriceMode] = useState("contado");
   const [detail, setDetail] = useState(null);
 
+  const isOfferActive = (p) => {
+    if (!p.offer) return false;
+    if (!p.offerHours || p.offerHours === 0) return true;
+    if (!p.offerStartTime) return true;
+    return Date.now() < p.offerStartTime + p.offerHours * 3600000;
+  };
+
+  const offerTimeLeft = (p) => {
+    if (!p.offerHours || !p.offerStartTime) return null;
+    const left = p.offerStartTime + p.offerHours * 3600000 - Date.now();
+    if (left <= 0) return "Expirada";
+    const h = Math.floor(left / 3600000);
+    const m = Math.floor((left % 3600000) / 60000);
+    return `${h}h ${m}m restantes`;
+  };
+
   const visible = products.filter(p => p.active &&
     (cat === "Todo" || p.category === cat) &&
     p.name.toLowerCase().includes(search.toLowerCase())
@@ -369,10 +385,17 @@ const Catalog = ({ products, onAddToCart, cart }) => {
           const inCart = cartCount(p.id);
           return (
             <Card key={p.id} style={{ padding: 0, overflow: "hidden", position: "relative" }}>
-              {p.offer && (
+              {p.offer && isOfferActive(p) && (
                 <div style={{ position: "absolute", top: 10, left: 10, zIndex: 1,
                   background: C.red, color: "#fff", borderRadius: 999, padding: "2px 10px",
                   fontSize: 10, fontWeight: 800 }}>🔥 OFERTA</div>
+              )}
+              {p.offer && isOfferActive(p) && offerTimeLeft(p) && offerTimeLeft(p) !== "Expirada" && (
+                <div style={{ position: "absolute", bottom: 8, left: 8, zIndex: 1,
+                  background: "rgba(0,0,0,0.8)", color: C.yellow, borderRadius: 6,
+                  padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
+                  ⏱️ {offerTimeLeft(p)}
+                </div>
               )}
               {inCart > 0 && (
                 <div style={{ position: "absolute", top: 10, right: 10, zIndex: 1,
@@ -391,7 +414,7 @@ const Catalog = ({ products, onAddToCart, cart }) => {
                   color: C.accent, marginBottom: 4 }}>{fmt(price)}</div>
                 {priceMode === "credito" && (
                   <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>
-                    ≈ {fmt(weekAbono(p.priceCredito, 5))}/sem · 5 semanas
+                    ≈ {fmt(weekAbono(p.priceCredito, p.maxWeeks || 5))}/sem · máx {p.maxWeeks || 5} semanas
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: p.stock > 0 ? C.green : C.red, marginBottom: 12 }}>
@@ -431,6 +454,29 @@ const Catalog = ({ products, onAddToCart, cart }) => {
           </div>
         )}
       </Modal>
+    </div>
+  );
+};
+
+// ─── BANK INFO DISPLAY (cliente) ─────────────────────────────────────────────
+const BankInfoDisplay = () => {
+  const [banks, setBanks] = useState([]);
+  useEffect(() => {
+    getDoc(doc(db, "config", "bankInfo")).then(snap => {
+      if (snap.exists() && snap.data().banks) setBanks(snap.data().banks);
+    });
+  }, []);
+  if (!banks.length) return <div style={{ color: C.muted, fontSize: 13 }}>Sin cuentas registradas aún.</div>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, margin: "8px 0" }}>
+      {banks.map((b, i) => (
+        <div key={i} style={{ background: C.bg, borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
+          <div style={{ fontWeight: 700, color: GOLD, marginBottom: 4 }}>{b.bank} {b.alias ? `— ${b.alias}` : ""}</div>
+          {b.clabe && <div>CLABE: <strong>{b.clabe}</strong></div>}
+          {b.account && <div>Tarjeta: <strong>{b.account}</strong></div>}
+          {b.holder && <div>Titular: <strong>{b.holder}</strong></div>}
+        </div>
+      ))}
     </div>
   );
 };
@@ -549,6 +595,13 @@ const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
             })()}
           </div>
         </Field>
+      )}
+
+      {(payType === "credito" || payType === "contado") && (
+        <div style={{ background: C.accentDim, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: 14 }}>
+          <div style={{ fontSize: 12, color: GOLD, fontWeight: 700, marginBottom: 6 }}>🏦 Datos para transferencia / abono</div>
+          <BankInfoDisplay />
+        </div>
       )}
 
       <Field label="Nota (opcional)">
@@ -704,7 +757,14 @@ const AdminProducts = ({ products, setProducts }) => {
   const openEdit = (p) => { setForm({ ...p }); setModal("edit"); };
 
   const save = () => {
-    const p = { ...form, priceContado: +form.priceContado, priceCredito: +form.priceCredito, stock: +form.stock };
+    const p = {
+      ...form,
+      priceContado: +form.priceContado,
+      priceCredito: +form.priceCredito,
+      stock: +form.stock,
+      offerHours: +form.offerHours || 0,
+      offerStartTime: form.offer && form.offerHours > 0 ? Date.now() : null,
+    };
     if (modal === "new") setProducts(ps => [...ps, { ...p, id: Date.now() }]);
     else setProducts(ps => ps.map(x => x.id === p.id ? p : x));
     setModal(null);
@@ -754,9 +814,17 @@ const AdminProducts = ({ products, setProducts }) => {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <Field label="Nombre" ><input value={form.name || ""} onChange={e => set("name", e.target.value)} /></Field>
           <Field label="Categoría">
-            <select value={form.category || ""} onChange={e => set("category", e.target.value)}>
-              {CATEGORIES.filter(c => c !== "Todo").map(c => <option key={c}>{c}</option>)}
-            </select>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <select value={CATEGORIES.includes(form.category) ? form.category : "__nueva__"}
+                onChange={e => { if (e.target.value !== "__nueva__") set("category", e.target.value); else set("category", ""); }}>
+                {CATEGORIES.filter(c => c !== "Todo").map(c => <option key={c}>{c}</option>)}
+                <option value="__nueva__">+ Nueva categoría...</option>
+              </select>
+              {(!CATEGORIES.includes(form.category) || form.category === "") && (
+                <input value={form.category || ""} onChange={e => set("category", e.target.value)}
+                  placeholder="Escribe la nueva categoría" />
+              )}
+            </div>
           </Field>
           <Field label="Precio contado"><input type="number" value={form.priceContado || ""} onChange={e => set("priceContado", e.target.value)} /></Field>
           <Field label="Precio crédito"><input type="number" value={form.priceCredito || ""} onChange={e => set("priceCredito", e.target.value)} /></Field>
@@ -776,6 +844,12 @@ const AdminProducts = ({ products, setProducts }) => {
               Oferta
             </label>
           </div>
+          {form.offer && (
+            <Field label="⏱️ Horas que durará la oferta (0 = sin límite)">
+              <input type="number" value={form.offerHours || 0} onChange={e => set("offerHours", +e.target.value)}
+                placeholder="Ej: 24 horas" min={0} />
+            </Field>
+          )}
           <Field label="URL Imagen" ><input value={form.image || ""} onChange={e => set("image", e.target.value)} placeholder="https://..." /></Field>
           <Field label="Descripción"><textarea rows={3} value={form.description || ""} onChange={e => set("description", e.target.value)} style={{ resize: "vertical" }} /></Field>
         </div>
@@ -998,6 +1072,14 @@ const AdminOrders = ({ orders, setOrders, users }) => {
                   setSel(null);
                 }}>❌ Cancelar pedido</Btn>
               )}
+              {(sel.status === "cancelado" || sel.status === "pagado") && (
+                <Btn variant="danger" size="sm" onClick={async () => {
+                  if (!confirm("¿Eliminar este pedido permanentemente?")) return;
+                  await deleteDoc(doc(db, "orders", sel.id));
+                  setOrders(os => os.filter(o => o.id !== sel.id));
+                  setSel(null);
+                }}>🗑️ Eliminar pedido</Btn>
+              )}
             </div>
           </div>
         )}
@@ -1025,6 +1107,20 @@ const AdminUsers = ({ users, orders, setUsers }) => {
     alert("✅ Datos actualizados");
   };
 
+  const toggleBlock = async (u) => {
+    const blocked = !u.blocked;
+    await setDoc(doc(db, "users", u.id), { blocked }, { merge: true });
+    setUsers(us => us.map(x => x.id === u.id ? { ...x, blocked } : x));
+    if (sel?.user?.id === u.id) setSel(s => ({ ...s, user: { ...s.user, blocked } }));
+  };
+
+  const deleteUser = async (u) => {
+    if (!confirm(`¿Eliminar a ${u.name}? Esta acción no se puede deshacer.`)) return;
+    await deleteDoc(doc(db, "users", u.id));
+    setUsers(us => us.filter(x => x.id !== u.id));
+    setSel(null);
+  };
+
   const userStats = (uid) => {
     const uOrders = orders.filter(o => o.userId === uid);
     const total = uOrders.reduce((s, o) => s + o.total, 0);
@@ -1038,7 +1134,7 @@ const AdminUsers = ({ users, orders, setUsers }) => {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: C.bg }}>
-              {["Cliente", "Teléfono", "Pedidos", "Total comprado", "Deuda activa", ""].map(h => (
+              {["Cliente", "Teléfono", "Pedidos", "Total comprado", "Deuda activa", "Estado", ""].map(h => (
                 <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 10,
                   color: C.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{h}</th>
               ))}
@@ -1048,7 +1144,7 @@ const AdminUsers = ({ users, orders, setUsers }) => {
             {users.map(u => {
               const s = userStats(u.id);
               return (
-                <tr key={u.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                <tr key={u.id} style={{ borderTop: `1px solid ${C.border}`, opacity: u.blocked ? 0.6 : 1 }}>
                   <td style={{ padding: "12px 16px" }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{u.name}</div>
                     <div style={{ fontSize: 12, color: C.muted }}>{u.email}</div>
@@ -1060,7 +1156,18 @@ const AdminUsers = ({ users, orders, setUsers }) => {
                     {fmt(s.pendiente)}
                   </td>
                   <td style={{ padding: "12px 16px" }}>
-                    <Btn size="sm" onClick={() => setSel({ user: u, ...s })}>Ver</Btn>
+                    {u.blocked
+                      ? <Chip color={C.red} small>🔒 Bloqueado</Chip>
+                      : <Chip color={C.green} small>✅ Activo</Chip>}
+                  </td>
+                  <td style={{ padding: "12px 16px" }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <Btn size="sm" onClick={() => setSel({ user: u, ...s })}>Ver</Btn>
+                      <Btn size="sm" variant={u.blocked ? "success" : "danger"} onClick={() => toggleBlock(u)}>
+                        {u.blocked ? "🔓" : "🔒"}
+                      </Btn>
+                      <Btn size="sm" variant="danger" onClick={() => deleteUser(u)}>🗑️</Btn>
+                    </div>
                   </td>
                 </tr>
               );
@@ -1129,6 +1236,62 @@ const AdminUsers = ({ users, orders, setUsers }) => {
           </div>
         )}
       </Modal>
+    </div>
+  );
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  ADMIN: CUENTAS BANCARIAS
+// ═══════════════════════════════════════════════════════════════
+const BankInfo = () => {
+  const [banks, setBanks] = useState([
+    { id: 1, bank: "BBVA", clabe: "", account: "", holder: "", alias: "" },
+  ]);
+  const [saved, setSaved] = useState(false);
+
+  const addBank = () => setBanks(b => [...b, { id: Date.now(), bank: "", clabe: "", account: "", holder: "", alias: "" }]);
+  const updateBank = (id, k, v) => setBanks(bs => bs.map(b => b.id === id ? { ...b, [k]: v } : b));
+  const removeBank = (id) => setBanks(bs => bs.filter(b => b.id !== id));
+
+  const save = async () => {
+    await setDoc(doc(db, "config", "bankInfo"), { banks });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  useEffect(() => {
+    getDoc(doc(db, "config", "bankInfo")).then(snap => {
+      if (snap.exists() && snap.data().banks) setBanks(snap.data().banks);
+    });
+  }, []);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ background: GOLD_DIM, border: `1px solid ${GOLD}33`, borderRadius: 12,
+        padding: "14px 18px", fontSize: 14, color: C.muted }}>
+        💡 Esta información aparecerá al cliente cuando elija pagar por transferencia o hacer un abono.
+      </div>
+
+      {banks.map((b, i) => (
+        <Card key={b.id}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div style={{ fontFamily: "Cinzel", fontWeight: 700, color: GOLD }}>Cuenta #{i + 1}</div>
+            {banks.length > 1 && <Btn size="sm" variant="danger" onClick={() => removeBank(b.id)}>🗑️ Quitar</Btn>}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Banco"><input value={b.bank} onChange={e => updateBank(b.id, "bank", e.target.value)} placeholder="BBVA, Banorte, HSBC..." /></Field>
+            <Field label="Alias / Nombre cuenta"><input value={b.alias} onChange={e => updateBank(b.id, "alias", e.target.value)} placeholder="Cuenta principal" /></Field>
+            <Field label="CLABE interbancaria (18 dígitos)"><input value={b.clabe} onChange={e => updateBank(b.id, "clabe", e.target.value.replace(/\D/g, "").slice(0, 18))} placeholder="000000000000000000" /></Field>
+            <Field label="Número de tarjeta (opcional)"><input value={b.account} onChange={e => updateBank(b.id, "account", e.target.value.replace(/\D/g, "").slice(0, 16))} placeholder="0000 0000 0000 0000" /></Field>
+            <Field label="Titular de la cuenta" ><input value={b.holder} onChange={e => updateBank(b.id, "holder", e.target.value)} placeholder="Nombre completo" /></Field>
+          </div>
+        </Card>
+      ))}
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <Btn variant="ghost" onClick={addBank}>＋ Agregar otra cuenta</Btn>
+        <Btn onClick={save}>{saved ? "✅ Guardado" : "💾 Guardar cuentas"}</Btn>
+      </div>
     </div>
   );
 };
@@ -1243,6 +1406,7 @@ const ADMIN_TABS = [
   { id: "products", label: "📦 Productos" },
   { id: "orders", label: "📋 Pedidos" },
   { id: "users", label: "👥 Clientes" },
+  { id: "bank", label: "🏦 Cuentas" },
 ];
 
 const USER_TABS = [
@@ -1272,7 +1436,13 @@ export default function App() {
         } else {
           const snap = await getDoc(doc(db, "users", fireUser.uid));
           if (snap.exists()) {
-            setCurrentUser({ id: fireUser.uid, ...snap.data() });
+            const userData = snap.data();
+            if (userData.blocked) {
+              await signOut(auth);
+              setAuthLoading(false);
+              return;
+            }
+            setCurrentUser({ id: fireUser.uid, ...userData });
           }
         }
       } else {
@@ -1496,7 +1666,8 @@ export default function App() {
           {tab === "stats" && isAdmin && <AdminStats orders={orders} products={products} users={users} />}
           {tab === "products" && isAdmin && <AdminProducts products={products} setProducts={setProductsFirebase} />}
           {tab === "orders" && isAdmin && <AdminOrders orders={orders} setOrders={setOrdersFirebase} users={users} />}
-          {tab === "users" && isAdmin && <AdminUsers users={users} orders={orders} />}
+          {tab === "users" && isAdmin && <AdminUsers users={users} orders={orders} setUsers={setUsers} />}
+          {tab === "bank" && isAdmin && <BankInfo />}
         </div>
 
         <Modal open={cartOpen} onClose={() => setCartOpen(false)} title="Tu carrito" wide>
