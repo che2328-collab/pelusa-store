@@ -17,7 +17,7 @@ const ADMIN_CREDENTIALS = { email: "admin@pelusastore.com", password: "pelusa123
 const LOGO_URL = "/logo.jpeg";
 const STORE_NAME = "Pelusa Store";
 
-const CATEGORIES = ["Todo", "Perfumes", "Ropa", "Calzado", "Belleza", "Consumibles", "Hogar", "Otros"];
+const BASE_CATEGORIES = ["Perfumes", "Ropa", "Calzado", "Belleza", "Consumibles", "Hogar", "Otros"];
 
 const initProducts = [
   { id: 1, name: "Perfume Elegance 100ml", category: "Perfumes", priceContado: 320, priceCredito: 420, stock: 20, image: "https://images.unsplash.com/photo-1541643600914-78b084683702?w=400&h=400&fit=crop", description: "Fragancia floral con notas de jazmín y vainilla.", active: true, offer: true },
@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "528148137033"; // ← TU NÚMERO (para que clientes te contacten)
+const WA_NUMBER = "5219981234567"; // ← TU NÚMERO (para que clientes te contacten)
 const buildWALink = (msg, number) => {
   const clean = (number || "").replace(/\D/g, "");
   const num = clean.length >= 10 ? clean : WA_NUMBER;
@@ -320,8 +320,9 @@ const AuthScreen = ({ onLogin, onRegister, users, setUsers }) => {
 // ═══════════════════════════════════════════════════════════════
 //  CATÁLOGO (vista cliente)
 // ═══════════════════════════════════════════════════════════════
-const Catalog = ({ products, onAddToCart, cart }) => {
+const Catalog = ({ products, onAddToCart, cart, categories }) => {
   const [cat, setCat] = useState("Todo");
+  const allCats = ["Todo", ...categories];
   const [search, setSearch] = useState("");
   const [priceMode, setPriceMode] = useState("contado");
   const [detail, setDetail] = useState(null);
@@ -368,7 +369,7 @@ const Catalog = ({ products, onAddToCart, cart }) => {
 
       {/* Categorías */}
       <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 20 }}>
-        {CATEGORIES.map(c => (
+        {allCats.map(c => (
           <button key={c} onClick={() => setCat(c)} style={{
             background: cat === c ? C.accent : C.surface,
             border: `1px solid ${cat === c ? C.accent : C.border}`,
@@ -775,16 +776,31 @@ const MyOrders = ({ orders, userId }) => {
 // ═══════════════════════════════════════════════════════════════
 //  ADMIN: PRODUCTOS
 // ═══════════════════════════════════════════════════════════════
-const AdminProducts = ({ products, setProducts }) => {
+const AdminProducts = ({ products, setProducts, categories, setCategories }) => {
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({});
+  const [newCatInput, setNewCatInput] = useState("");
+  const [showNewCat, setShowNewCat] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const openNew = () => {
-    setForm({ name: "", category: "Perfumes", priceContado: "", priceCredito: "", stock: "", image: "", description: "", active: true, offer: false });
+    setForm({ name: "", category: categories[0] || "Perfumes", priceContado: "", priceCredito: "", stock: "", image: "", description: "", active: true, offer: false });
+    setShowNewCat(false);
+    setNewCatInput("");
     setModal("new");
   };
-  const openEdit = (p) => { setForm({ ...p }); setModal("edit"); };
+  const openEdit = (p) => { setForm({ ...p }); setShowNewCat(false); setModal("edit"); };
+
+  const saveNewCategory = async () => {
+    const trimmed = newCatInput.trim();
+    if (!trimmed || categories.includes(trimmed)) return;
+    const updated = [...categories, trimmed];
+    await setDoc(doc(db, "config", "categories"), { list: updated });
+    setCategories(updated);
+    set("category", trimmed);
+    setShowNewCat(false);
+    setNewCatInput("");
+  };
 
   const save = () => {
     const p = {
@@ -845,15 +861,24 @@ const AdminProducts = ({ products, setProducts }) => {
           <Field label="Nombre" ><input value={form.name || ""} onChange={e => set("name", e.target.value)} /></Field>
           <Field label="Categoría">
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <select value={CATEGORIES.includes(form.category) ? form.category : "__nueva__"}
-                onChange={e => { if (e.target.value !== "__nueva__") set("category", e.target.value); else set("category", ""); }}>
-                {CATEGORIES.filter(c => c !== "Todo").map(c => <option key={c}>{c}</option>)}
-                <option value="__nueva__">+ Nueva categoría...</option>
+              <select value={showNewCat ? "__nueva__" : (form.category || "")}
+                onChange={e => {
+                  if (e.target.value === "__nueva__") { setShowNewCat(true); }
+                  else { setShowNewCat(false); set("category", e.target.value); }
+                }}>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="__nueva__">＋ Nueva categoría...</option>
               </select>
-              {(!CATEGORIES.includes(form.category) || form.category === "") && (
-                <input value={form.category || ""} onChange={e => set("category", e.target.value)}
-                  placeholder="Escribe la nueva categoría" />
+              {showNewCat && (
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input value={newCatInput} onChange={e => setNewCatInput(e.target.value)}
+                    placeholder="Nombre de la nueva categoría" style={{ flex: 1 }} />
+                  <Btn size="sm" onClick={saveNewCategory}>✅ Agregar</Btn>
+                </div>
               )}
+              {showNewCat && <div style={{ fontSize: 11, color: C.muted }}>
+                La categoría se guardará y aparecerá en el menú del cliente automáticamente.
+              </div>}
             </div>
           </Field>
           <Field label="Precio contado"><input type="number" value={form.priceContado || ""} onChange={e => set("priceContado", e.target.value)} /></Field>
@@ -1450,6 +1475,7 @@ export default function App() {
   const [products, setProducts] = useState(initProducts);
   const [users, setUsers] = useState(initUsers);
   const [orders, setOrders] = useState(initOrders);
+  const [categories, setCategories] = useState(BASE_CATEGORIES);
   const [tab, setTab] = useState("catalog");
   const [cart, setCart] = useState([]);
   const [cartOpen, setCartOpen] = useState(false);
@@ -1481,6 +1507,15 @@ export default function App() {
       setAuthLoading(false);
     });
     return unsub;
+  }, []);
+
+  // ── Firestore: categorías ───────────────────────────────────
+  useEffect(() => {
+    getDoc(doc(db, "config", "categories")).then(snap => {
+      if (snap.exists() && snap.data().list?.length) {
+        setCategories(snap.data().list);
+      }
+    });
   }, []);
 
   // ── Firestore: productos en tiempo real ─────────────────────
@@ -1691,10 +1726,10 @@ export default function App() {
             </div>
           )}
 
-          {tab === "catalog" && <Catalog products={products} onAddToCart={addToCart} cart={cart} />}
+          {tab === "catalog" && <Catalog products={products} onAddToCart={addToCart} cart={cart} categories={categories} />}
           {tab === "orders" && !isAdmin && <MyOrders orders={orders} userId={currentUser.id} />}
           {tab === "stats" && isAdmin && <AdminStats orders={orders} products={products} users={users} />}
-          {tab === "products" && isAdmin && <AdminProducts products={products} setProducts={setProductsFirebase} />}
+          {tab === "products" && isAdmin && <AdminProducts products={products} setProducts={setProductsFirebase} categories={categories} setCategories={setCategories} />}
           {tab === "orders" && isAdmin && <AdminOrders orders={orders} setOrders={setOrdersFirebase} users={users} />}
           {tab === "users" && isAdmin && <AdminUsers users={users} orders={orders} setUsers={setUsers} />}
           {tab === "bank" && isAdmin && <BankInfo />}
