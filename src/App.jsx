@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "528148137033"; // ← TU NÚMERO (para que clientes te contacten)
+const WA_NUMBER = "5219981234567"; // ← TU NÚMERO (para que clientes te contacten)
 const buildWALink = (msg, number) => {
   const clean = (number || "").replace(/\D/g, "");
   const num = clean.length >= 10 ? clean : WA_NUMBER;
@@ -216,7 +216,7 @@ const CreditBar = ({ paid, total }) => {
 // ═══════════════════════════════════════════════════════════════
 //  AUTH — Login / Registro
 // ═══════════════════════════════════════════════════════════════
-const AuthScreen = ({ onLogin, onRegister, users, setUsers }) => {
+const AuthScreen = ({ onLogin, onRegister, users, setUsers, blockedError }) => {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "", password: "", phone: "", address: "" });
   const [err, setErr] = useState("");
@@ -283,6 +283,28 @@ const AuthScreen = ({ onLogin, onRegister, users, setUsers }) => {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {blockedError && mode === "login" && (
+              <div style={{
+                background: C.redDim, border: `1px solid ${C.red}66`,
+                borderRadius: 12, padding: "16px 18px", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>🔒</div>
+                <div style={{ fontWeight: 700, color: C.red, fontSize: 15, marginBottom: 8 }}>
+                  Sesión suspendida por atraso de pago
+                </div>
+                <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.7 }}>
+                  Ponerse en contacto al WhatsApp{" "}
+                  <a href="https://wa.me/528148137033?text=Hola%2C%20mi%20sesión%20fue%20suspendida%20en%20Pelusa%20Store%20y%20quisiera%20regularizar%20mi%20cuenta."
+                    target="_blank" rel="noreferrer"
+                    style={{ color: "#25D366", fontWeight: 700 }}>
+                    814 813 7033
+                  </a>
+                </div>
+                <div style={{ fontSize: 13, color: GOLD, fontWeight: 600, marginTop: 8, fontStyle: "italic" }}>
+                  "Recuerde que su crédito vale mucho" 🌟
+                </div>
+              </div>
+            )}
             {mode === "register" && (
               <>
                 <Field label="Nombre completo"><input value={form.name} onChange={e => set("name", e.target.value)} placeholder="Tu nombre" /></Field>
@@ -1127,12 +1149,17 @@ const AdminOrders = ({ orders, setOrders, users }) => {
                   setSel(null);
                 }}>❌ Cancelar pedido</Btn>
               )}
-              {(sel.status === "cancelado" || sel.status === "pagado") && (
+              {(sel.status === "cancelado" || sel.status === "pagado" || sel.status === "pendiente_pago") && (
                 <Btn variant="danger" size="sm" onClick={async () => {
                   if (!confirm("¿Eliminar este pedido permanentemente?")) return;
-                  await deleteDoc(doc(db, "orders", sel.id));
-                  setOrders(os => os.filter(o => o.id !== sel.id));
+                  const orderId = sel.id;
                   setSel(null);
+                  try {
+                    await deleteDoc(doc(db, "orders", String(orderId)));
+                  } catch (e) {
+                    // If not in Firestore (demo data), just remove from local state
+                  }
+                  setOrders(os => os.filter(o => o.id !== orderId));
                 }}>🗑️ Eliminar pedido</Btn>
               )}
             </div>
@@ -1472,6 +1499,7 @@ const USER_TABS = [
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [blockedError, setBlockedError] = useState(false);
   const [products, setProducts] = useState(initProducts);
   const [users, setUsers] = useState(initUsers);
   const [orders, setOrders] = useState(initOrders);
@@ -1495,6 +1523,7 @@ export default function App() {
             const userData = snap.data();
             if (userData.blocked) {
               await signOut(auth);
+              setBlockedError(true);
               setAuthLoading(false);
               return;
             }
@@ -1521,9 +1550,7 @@ export default function App() {
   // ── Firestore: productos en tiempo real ─────────────────────
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "products"), (snap) => {
-      if (!snap.empty) {
-        setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      }
+      setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return unsub;
   }, []);
@@ -1533,9 +1560,7 @@ export default function App() {
     const unsub = onSnapshot(
       query(collection(db, "orders"), orderBy("date", "desc")),
       (snap) => {
-        if (!snap.empty) {
-          setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        }
+        setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       }
     );
     return unsub;
@@ -1544,9 +1569,7 @@ export default function App() {
   // ── Firestore: usuarios en tiempo real ──────────────────────
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "users"), (snap) => {
-      if (!snap.empty) {
-        setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      }
+      setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return unsub;
   }, []);
@@ -1618,10 +1641,11 @@ export default function App() {
     <>
       <style>{G}</style>
       <AuthScreen
-        onLogin={handleLogin}
+        onLogin={async (email, password) => { setBlockedError(false); await handleLogin(email, password); }}
         onRegister={handleRegister}
         users={users}
         setUsers={setUsers}
+        blockedError={blockedError}
       />
     </>
   );
