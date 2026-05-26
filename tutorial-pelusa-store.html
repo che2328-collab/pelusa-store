@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tutorial — Pelusa Store</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #E2C06A;
+    --gold-dim: rgba(201,168,76,0.12);
+    --black: #070707;
+    --surface: #111111;
+    --border: #2a2410;
+    --text: #f5f0e8;
+    --muted: #7a7060;
+    --green: #4ade80;
+    --red: #f87171;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--black);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── FONDO ANIMADO ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 10%, rgba(201,168,76,0.07) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 80%, rgba(201,168,76,0.05) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    position: relative; z-index: 1;
+    text-align: center;
+    padding: 60px 24px 40px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-wrap {
+    width: 90px; height: 90px;
+    background: #000;
+    border: 2px solid rgba(201,168,76,0.4);
+    border-radius: 22px;
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 20px;
+    box-shadow: 0 0 40px rgba(201,168,76,0.15);
+    animation: pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 30px rgba(201,168,76,0.15); }
+    50% { box-shadow: 0 0 60px rgba(201,168,76,0.3); }
+  }
+
+  .logo-wrap img { width: 75%; height: 75%; object-fit: contain; }
+
+  .hero h1 {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(24px, 6vw, 42px);
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light), var(--gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 10px;
+  }
+
+  .hero p {
+    color: var(--muted);
+    font-size: 15px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+
+  .hero-badge {
+    display: inline-block;
+    background: var(--gold-dim);
+    border: 1px solid rgba(201,168,76,0.3);
+    border-radius: 999px;
+    padding: 6px 18px;
+    font-size: 12px;
+    color: var(--gold-light);
+    margin-top: 16px;
+    letter-spacing: 0.1em;
+  }
+
+  /* ── PROGRESS NAV ── */
+  .progress-nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(7,7,7,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex; align-items: center; gap: 8px;
+    overflow-x: auto;
+  }
+
+  .progress-nav::-webkit-scrollbar { display: none; }
+
+  .nav-step {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.25s;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .nav-step.active {
+    background: var(--gold-dim);
+    border-color: var(--gold);
+    color: var(--gold-light);
+  }
+
+  .nav-step .dot {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700;
+  }
+
+  .nav-step.active .dot { background: var(--gold); color: #000; }
+  .nav-step.done .dot { background: var(--green); color: #000; }
+  .nav-step.done { border-color: rgba(74,222,128,0.3); color: var(--green); }
+
+  /* ── CONTENIDO PRINCIPAL ── */
+  .content {
+    position: relative; z-index: 1;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+  /* ── SECCIÓN ── */
+  .section {
+    margin-bottom: 64px;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+
+  .section.visible { opacity: 1; transform: translateY(0); }
+
+  .section-header {
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-num {
+    width: 48px; height: 48px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Cinzel', serif;
+    font-size: 18px; font-weight: 800;
+    color: #000;
+    flex-shrink: 0;
+    box-shadow: 0 4px 20px rgba(201,168,76,0.3);
+  }
+
+  .section-title {
+    font-family: 'Cinzel', serif;
+    font-size: clamp(18px, 4vw, 24px);
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .section-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ── STEPS ── */
+  .steps { display: flex; flex-direction: column; gap: 16px; }
+
+  .step {
+    display: flex; gap: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px 20px;
+    transition: border-color 0.25s, transform 0.25s;
+    cursor: default;
+  }
+
+  .step:hover {
+    border-color: rgba(201,168,76,0.4);
+    transform: translateX(4px);
+  }
+
+  .step-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    width: 44px;
+    text-align: center;
+    line-height: 1;
+    padding-top: 2px;
+  }
+
+  .step-body h3 {
+    font-size: 15px; font-weight: 700;
+    margin-bottom: 5px;
+    color: var(--text);
+  }
+
+  .step-body p {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .step-body .highlight {
+    color: var(--gold-light);
+    font-weight: 600;
+  }
+
+  /* ── TIP BOX ── */
+  .tip {
+    background: var(--gold-dim);
+    border: 1px solid rgba(201,168,76,0.25);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: var(--gold-light);
+    line-height: 1.7;
+    margin-top: 16px;
+    display: flex; gap: 10px;
+  }
+
+  /* ── MOCKUP PHONE ── */
+  .phone-mockup {
+    background: #000;
+    border: 2px solid rgba(201,168,76,0.3);
+    border-radius: 28px;
+    padding: 20px 16px;
+    max-width: 300px;
+    margin: 20px auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(201,168,76,0.1);
+  }
+
+  .phone-screen {
+    background: #0d0d0d;
+    border-radius: 18px;
+    padding: 16px;
+    border: 1px solid #1a1a1a;
+  }
+
+  .phone-header {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    color: var(--gold);
+    text-align: center;
+    margin-bottom: 14px;
+    letter-spacing: 0.12em;
+  }
+
+  /* ── TARJETA PRODUCTO DEMO ── */
+  .product-demo {
+    background: #111;
+    border: 1px solid #2a2a1a;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+
+  .product-demo-img {
+    width: 100%; height: 90px;
+    background: linear-gradient(135deg, #1a1a0a, #2a2410);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+  }
+
+  .product-demo-info { padding: 10px 12px; }
+
+  .product-demo-name {
+    font-size: 12px; font-weight: 700; margin-bottom: 4px;
+  }
+
+  .product-demo-price {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    color: var(--gold);
+    font-weight: 700;
+  }
+
+  .product-demo-credit {
+    font-size: 10px; color: var(--muted);
+  }
+
+  /* ── BADGE CRÉDITO ── */
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-gold { background: var(--gold-dim); color: var(--gold-light); border: 1px solid rgba(201,168,76,0.3); }
+  .badge-green { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.3); }
+  .badge-red { background: rgba(248,113,113,0.12); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+
+  /* ── COMPARATIVA ── */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .compare-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    text-align: center;
+  }
+
+  .compare-card.highlight-card {
+    border-color: rgba(201,168,76,0.4);
+    background: var(--gold-dim);
+  }
+
+  .compare-card .price {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px; font-weight: 700;
+    color: var(--gold);
+    margin: 8px 0 4px;
+  }
+
+  .compare-card .label {
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+
+  .compare-card .note {
+    font-size: 11px; color: var(--muted);
+    margin-top: 6px; line-height: 1.5;
+  }
+
+  /* ── TIMELINE ── */
+  .timeline { display: flex; flex-direction: column; gap: 0; margin-top: 16px; }
+
+  .timeline-item {
+    display: flex; gap: 16px;
+    position: relative;
+  }
+
+  .timeline-left {
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  .timeline-dot {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--gold-dim);
+    border: 2px solid var(--gold);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; color: var(--gold);
+    font-weight: 700; flex-shrink: 0;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .timeline-line {
+    width: 2px;
+    flex: 1; min-height: 24px;
+    background: linear-gradient(to bottom, var(--gold), transparent);
+    margin: 4px 0;
+  }
+
+  .timeline-body {
+    padding: 4px 0 24px;
+    flex: 1;
+  }
+
+  .timeline-body h4 {
+    font-size: 14px; font-weight: 700; color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .timeline-body p {
+    font-size: 12px; color: var(--muted); line-height: 1.6;
+  }
+
+  /* ── WA BUTTON ── */
+  .wa-button {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    background: #25D366;
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    padding: 16px 28px;
+    font-size: 16px; font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+    margin: 24px auto 0;
+    width: 100%; max-width: 360px;
+    font-family: 'DM Sans', sans-serif;
+    transition: opacity 0.2s, transform 0.2s;
+    box-shadow: 0 4px 24px rgba(37,211,102,0.3);
+  }
+
+  .wa-button:hover { opacity: 0.88; transform: translateY(-2px); }
+
+  /* ── FAQ ── */
+  .faq-item {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+
+  .faq-q {
+    padding: 16px 20px;
+    cursor: pointer;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 14px; font-weight: 600;
+    background: var(--surface);
+    transition: background 0.2s;
+    user-select: none;
+  }
+
+  .faq-q:hover { background: #161610; }
+
+  .faq-q .arrow {
+    color: var(--gold);
+    font-size: 16px;
+    transition: transform 0.3s;
+    flex-shrink: 0;
+  }
+
+  .faq-q.open .arrow { transform: rotate(180deg); }
+
+  .faq-a {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, padding 0.3s;
+    background: #0d0d07;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.8;
+    padding: 0 20px;
+  }
+
+  .faq-a.open { max-height: 300px; padding: 14px 20px; }
+
+  /* ── FOOTER ── */
+  .footer {
+    position: relative; z-index: 1;
+    text-align: center;
+    padding: 40px 24px;
+    border-top: 1px solid var(--border);
+  }
+
+  .footer p { font-size: 12px; color: var(--muted); line-height: 1.8; }
+  .footer .brand { font-family: 'Cinzel', serif; color: var(--gold); font-size: 14px; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 480px) {
+    .compare { grid-template-columns: 1fr; }
+    .phone-mockup { max-width: 260px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="logo-wrap">
+    <img src="logo.jpeg" alt="Pelusa Store" onerror="this.parentElement.innerHTML='🏪'" />
+  </div>
+  <h1>PELUSA STORE</h1>
+  <p>Guía para clientes</p>
+  <div class="hero-badge">✨ Tu tienda de confianza — fácil y seguro</div>
+</div>
+
+<!-- NAV DE PROGRESO -->
+<div class="progress-nav" id="progressNav">
+  <button class="nav-step active" onclick="scrollToSection(0)"><span class="dot">1</span> Registro</button>
+  <button class="nav-step" onclick="scrollToSection(1)"><span class="dot">2</span> Catálogo</button>
+  <button class="nav-step" onclick="scrollToSection(2)"><span class="dot">3</span> Precios</button>
+  <button class="nav-step" onclick="scrollToSection(3)"><span class="dot">4</span> Pedidos</button>
+  <button class="nav-step" onclick="scrollToSection(4)"><span class="dot">5</span> Pagos</button>
+  <button class="nav-step" onclick="scrollToSection(5)"><span class="dot">6</span> WhatsApp</button>
+  <button class="nav-step" onclick="scrollToSection(6)"><span class="dot">7</span> Preguntas</button>
+</div>
+
+<div class="content">
+
+  <!-- ── SECCIÓN 1: REGISTRO ── -->
+  <div class="section" id="sec0">
+    <div class="section-header">
+      <div class="section-num">1</div>
+      <div>
+        <div class="section-title">Cómo registrarte</div>
+        <div class="section-sub">Crea tu cuenta en menos de 2 minutos</div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-icon">🌐</div>
+        <div class="step-body">
+          <h3>Entra a la tienda</h3>
+          <p>Abre tu navegador y entra al link que te compartió Pelusa Store. Puedes guardarlo en tus favoritos para acceder fácil.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">📝</div>
+        <div class="step-body">
+          <h3>Toca "Registrarme"</h3>
+          <p>En la pantalla de inicio, toca la pestaña <span class="highlight">"Registrarme"</span> y llena tus datos: nombre completo, teléfono WhatsApp, dirección de entrega, correo y contraseña.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">📱</div>
+        <div class="step-body">
+          <h3>Tu teléfono con +52</h3>
+          <p>El campo de teléfono ya incluye el prefijo <span class="highlight">🇲🇽 +52</span> automáticamente. Solo escribe tus 10 dígitos sin el cero del inicio.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">✅</div>
+        <div class="step-body">
+          <h3>¡Listo, ya entraste!</h3>
+          <p>Una vez registrado entras directo al catálogo. La próxima vez solo necesitas tu correo y contraseña para iniciar sesión.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip">💡 <span>Guarda bien tu contraseña. Si la olvidas, contacta a Pelusa Store por WhatsApp para recuperar tu acceso.</span></div>
+  </div>
+
+  <!-- ── SECCIÓN 2: CATÁLOGO ── -->
+  <div class="section" id="sec1">
+    <div class="section-header">
+      <div class="section-num">2</div>
+      <div>
+        <div class="section-title">El catálogo de productos</div>
+        <div class="section-sub">Explora todo lo disponible para ti</div>
+      </div>
+    </div>
+
+    <div class="phone-mockup">
+      <div class="phone-screen">
+        <div class="phone-header">🛍️ PELUSA STORE</div>
+        <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;padding-bottom:4px;">
+          <span class="badge badge-gold">Todo</span>
+          <span class="badge" style="background:#111;border:1px solid #2a2a1a;color:#7a7060;">Perfumes</span>
+          <span class="badge" style="background:#111;border:1px solid #2a2a1a;color:#7a7060;">Ropa</span>
+          <span class="badge" style="background:#111;border:1px solid #2a2a1a;color:#7a7060;">Calzado</span>
+        </div>
+        <div class="product-demo">
+          <div class="product-demo-img">💎</div>
+          <div class="product-demo-info">
+            <div class="badge badge-red" style="font-size:9px;margin-bottom:4px;">🔥 OFERTA</div>
+            <div class="product-demo-name">Perfume Premium 100ml</div>
+            <div class="product-demo-price">$320</div>
+            <div class="product-demo-credit">Crédito: $420 · máx 5 sem</div>
+          </div>
+        </div>
+        <div class="product-demo">
+          <div class="product-demo-img">👟</div>
+          <div class="product-demo-info">
+            <div class="product-demo-name">Tenis Sport Air</div>
+            <div class="product-demo-price">$650</div>
+            <div class="product-demo-credit">Crédito: $820 · máx 8 sem</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-icon">🗂️</div>
+        <div class="step-body">
+          <h3>Filtra por categoría</h3>
+          <p>Usa los botones de categorías (Perfumes, Ropa, Calzado, etc.) para ver solo los productos que te interesan.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">🔍</div>
+        <div class="step-body">
+          <h3>Busca por nombre</h3>
+          <p>Escribe en el buscador el nombre del producto que quieres encontrar rápidamente.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">💵</div>
+        <div class="step-body">
+          <h3>Cambia entre precios</h3>
+          <p>Usa el botón <span class="highlight">"Contado"</span> o <span class="highlight">"Crédito"</span> para ver ambos precios en todos los productos al mismo tiempo.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">🔥</div>
+        <div class="step-body">
+          <h3>Ofertas por tiempo limitado</h3>
+          <p>Los productos con la etiqueta <span class="highlight">🔥 OFERTA</span> tienen precio especial. Algunas ofertas tienen cuenta regresiva — ¡no te las pierdas!</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 3: PRECIOS ── -->
+  <div class="section" id="sec2">
+    <div class="section-header">
+      <div class="section-num">3</div>
+      <div>
+        <div class="section-title">Precio contado vs. crédito</div>
+        <div class="section-sub">Tú decides cómo pagar</div>
+      </div>
+    </div>
+
+    <div class="compare">
+      <div class="compare-card">
+        <div class="label">💵 Contado</div>
+        <div class="price">$320</div>
+        <div class="note">Pago único<br>Precio más bajo<br>Pagas en una sola exhibición</div>
+      </div>
+      <div class="compare-card highlight-card">
+        <div class="label">📅 Crédito</div>
+        <div class="price">$420</div>
+        <div class="note">Desde $84/sem<br>Hasta 5 semanas<br>Sin complicaciones</div>
+      </div>
+    </div>
+
+    <div class="steps" style="margin-top:20px;">
+      <div class="step">
+        <div class="step-icon">📊</div>
+        <div class="step-body">
+          <h3>El crédito semanal</h3>
+          <p>Al comprar a crédito, el total se divide en semanas. Por ejemplo: $420 ÷ 5 semanas = <span class="highlight">$84 por semana</span>. Muy cómodo.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">📅</div>
+        <div class="step-body">
+          <h3>Tú eliges las semanas</h3>
+          <p>Puedes pagar en 2, 3, 4, 5, 6 u 8 semanas según el producto. A más semanas, el abono semanal es más pequeño.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">🔒</div>
+        <div class="step-body">
+          <h3>El crédito se cuida</h3>
+          <p>Mantener tus pagos al corriente te permite seguir disfrutando de tu crédito. Si tienes algún problema, habla con Pelusa Store antes.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip">⭐ <span><strong>Recuerda:</strong> tu crédito vale mucho. Cuidarlo te abre puertas a más productos y mejores condiciones.</span></div>
+  </div>
+
+  <!-- ── SECCIÓN 4: PEDIDOS ── -->
+  <div class="section" id="sec3">
+    <div class="section-header">
+      <div class="section-num">4</div>
+      <div>
+        <div class="section-title">Cómo hacer un pedido</div>
+        <div class="section-sub">Desde el carrito hasta la confirmación</div>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-left">
+          <div class="timeline-dot">1</div>
+          <div class="timeline-line"></div>
+        </div>
+        <div class="timeline-body">
+          <h4>Agrega al carrito 🛒</h4>
+          <p>Toca el botón <strong>"Agregar"</strong> en el producto que quieres. Puedes agregar varios productos a la vez.</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-left">
+          <div class="timeline-dot">2</div>
+          <div class="timeline-line"></div>
+        </div>
+        <div class="timeline-body">
+          <h4>Revisa el carrito 📋</h4>
+          <p>Toca el botón dorado del carrito arriba. Ahí puedes ajustar cantidades o quitar productos.</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-left">
+          <div class="timeline-dot">3</div>
+          <div class="timeline-line"></div>
+        </div>
+        <div class="timeline-body">
+          <h4>Elige contado o crédito 💳</h4>
+          <p>Selecciona tu forma de pago. Si eliges crédito, escoge también cuántas semanas quieres pagar.</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-left">
+          <div class="timeline-dot">4</div>
+          <div class="timeline-line"></div>
+        </div>
+        <div class="timeline-body">
+          <h4>Confirma por WhatsApp 💬</h4>
+          <p>Al finalizar, toca <strong>"Confirmar por WhatsApp"</strong>. Se abrirá WhatsApp con tu pedido listo para enviarlo a Pelusa Store.</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-left">
+          <div class="timeline-dot">5</div>
+        </div>
+        <div class="timeline-body">
+          <h4>Sigue tu pedido 📦</h4>
+          <p>En la sección <strong>"Mis pedidos"</strong> puedes ver el estado, historial de abonos y tu saldo pendiente en cualquier momento.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 5: PAGOS ── -->
+  <div class="section" id="sec4">
+    <div class="section-header">
+      <div class="section-num">5</div>
+      <div>
+        <div class="section-title">Cómo pagar</div>
+        <div class="section-sub">Opciones seguras y fáciles</div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-icon">🏦</div>
+        <div class="step-body">
+          <h3>Transferencia bancaria / SPEI</h3>
+          <p>Al confirmar tu pedido, en la app aparecen los datos bancarios de Pelusa Store (CLABE, banco y titular). Realiza la transferencia y envía tu comprobante por WhatsApp.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">💵</div>
+        <div class="step-body">
+          <h3>Pago en efectivo</h3>
+          <p>Coordina con Pelusa Store la entrega y pago en persona. Se registra el abono directamente en la app.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">📅</div>
+        <div class="step-body">
+          <h3>Abonos semanales</h3>
+          <p>Si compraste a crédito, tu sección <span class="highlight">"Mis pedidos"</span> muestra cuánto has pagado, cuánto falta y una barra de progreso visual.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">⏰</div>
+        <div class="step-body">
+          <h3>Fecha límite de pago</h3>
+          <p>Para compras de contado, en tus pedidos verás la fecha límite acordada. Si está próxima a vencer aparece un aviso en <span style="color:#eab308">amarillo</span>, si vence en <span style="color:#f87171">rojo</span>.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="tip">💡 <span>Siempre guarda tu comprobante de transferencia hasta que Pelusa Store confirme tu pago en la app.</span></div>
+  </div>
+
+  <!-- ── SECCIÓN 6: WHATSAPP ── -->
+  <div class="section" id="sec5">
+    <div class="section-header">
+      <div class="section-num">6</div>
+      <div>
+        <div class="section-title">Contacto por WhatsApp</div>
+        <div class="section-sub">Siempre cerca de ti</div>
+      </div>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-icon">🟢</div>
+        <div class="step-body">
+          <h3>Botón flotante verde</h3>
+          <p>En la tienda siempre verás un botón verde <span class="highlight">💬</span> en la esquina inferior derecha. Tócalo para escribirle directo a Pelusa Store.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">📦</div>
+        <div class="step-body">
+          <h3>Preguntar por un producto</h3>
+          <p>En cada producto hay un botón <span class="highlight">"Preguntar por WhatsApp"</span>. Te abre un mensaje con el nombre y precio del producto ya escritos.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-icon">🛒</div>
+        <div class="step-body">
+          <h3>Confirmar pedido</h3>
+          <p>Al terminar tu compra, el botón <span class="highlight">"Confirmar por WhatsApp"</span> manda automáticamente el resumen completo de tu pedido con productos, cantidades y total.</p>
+        </div>
+      </div>
+    </div>
+
+    <a class="wa-button" href="https://wa.me/528148137033?text=Hola%20Pelusa%20Store%20%F0%9F%91%8B%20Acabo%20de%20ver%20el%20tutorial%20y%20tengo%20una%20pregunta." target="_blank">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      Escribir a Pelusa Store
+    </a>
+  </div>
+
+  <!-- ── SECCIÓN 7: PREGUNTAS ── -->
+  <div class="section" id="sec6">
+    <div class="section-header">
+      <div class="section-num">7</div>
+      <div>
+        <div class="section-title">Preguntas frecuentes</div>
+        <div class="section-sub">Todo lo que necesitas saber</div>
+      </div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        ¿Es seguro registrarme? <span class="arrow">▼</span>
+      </div>
+      <div class="faq-a">Sí. Pelusa Store es una tienda de confianza para su comunidad. Tus datos solo los ve el administrador y se usan únicamente para coordinar tus pedidos y entregas.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        ¿Puedo comprar sin tener dinero en este momento? <span class="arrow">▼</span>
+      </div>
+      <div class="faq-a">Sí, eso es justamente el crédito semanal. Llevas tu producto hoy y lo pagas en cómodas semanas. Solo asegúrate de cumplir con los abonos para mantener tu crédito activo.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        ¿Qué pasa si me atraso en un pago? <span class="arrow">▼</span>
+      </div>
+      <div class="faq-a">Lo más importante es comunicarte con Pelusa Store ANTES de que se venza. Si hay un retraso prolongado, tu acceso puede ser suspendido temporalmente. Recuerda: tu crédito vale mucho, cuídalo.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        ¿Cómo sé cuánto debo? <span class="arrow">▼</span>
+      </div>
+      <div class="faq-a">En la sección "Mis pedidos" de la app puedes ver en tiempo real tu saldo pendiente, historial de abonos y barra de progreso de cada pedido a crédito.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        ¿Puedo cambiar mi número de teléfono o dirección? <span class="arrow">▼</span>
+      </div>
+      <div class="faq-a">Sí, comunícate con Pelusa Store por WhatsApp para actualizar tus datos. El administrador puede modificarlos directamente desde el panel de la tienda.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        ¿Puedo ver cuánto tiempo le queda a una oferta? <span class="arrow">▼</span>
+      </div>
+      <div class="faq-a">Sí. Los productos en oferta muestran una cuenta regresiva ⏱️ en la imagen del producto indicando cuántas horas y minutos quedan. ¡Aprovéchalas a tiempo!</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-q" onclick="toggleFaq(this)">
+        ¿Qué hago si olvidé mi contraseña? <span class="arrow">▼</span>
+      </div>
+      <div class="faq-a">Escríbele a Pelusa Store por WhatsApp con el correo con el que te registraste. El administrador puede ayudarte a recuperar el acceso.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  <div class="brand">PELUSA STORE</div>
+  <p style="margin-top:8px;">Tienda exclusiva para miembros<br>
+  <a href="https://wa.me/528148137033" target="_blank" style="color:#25D366;text-decoration:none;">📱 WhatsApp: 814 813 7033</a></p>
+  <p style="margin-top:16px;font-size:11px;color:#3a3020;">Tutorial v1.0 · Pelusa Store © 2026</p>
+</div>
+
+<script>
+  // ── Scroll animation ──
+  const sections = document.querySelectorAll('.section');
+  const navBtns = document.querySelectorAll('.nav-step');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        const idx = [...sections].indexOf(entry.target);
+        navBtns.forEach((btn, i) => {
+          btn.classList.remove('active');
+          if (i < idx) btn.classList.add('done');
+          else btn.classList.remove('done');
+          if (i === idx) btn.classList.add('active');
+        });
+      }
+    });
+  }, { threshold: 0.15 });
+
+  sections.forEach(s => observer.observe(s));
+
+  // ── Scroll to section ──
+  function scrollToSection(idx) {
+    document.getElementById('sec' + idx).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ── FAQ toggle ──
+  function toggleFaq(el) {
+    const answer = el.nextElementSibling;
+    const isOpen = answer.classList.contains('open');
+    document.querySelectorAll('.faq-a').forEach(a => a.classList.remove('open'));
+    document.querySelectorAll('.faq-q').forEach(q => q.classList.remove('open'));
+    if (!isOpen) {
+      answer.classList.add('open');
+      el.classList.add('open');
+    }
+  }
+
+  // Trigger first section visible immediately
+  setTimeout(() => sections[0].classList.add('visible'), 100);
+</script>
+
+</body>
+</html>
