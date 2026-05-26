@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "528148137033"; // ← TU NÚMERO (para que clientes te contacten)
+const WA_NUMBER = "5219981234567"; // ← TU NÚMERO (para que clientes te contacten)
 const buildWALink = (msg, number) => {
   const clean = (number || "").replace(/\D/g, "");
   const num = clean.length >= 10 ? clean : WA_NUMBER;
@@ -498,41 +498,49 @@ const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
   };
   const remove = (id) => setCart(c => c.filter(i => i.productId !== id));
 
+  const [payDueDate, setPayDueDate] = useState("");
+  const [confirmedOrder, setConfirmedOrder] = useState(null);
+
   const confirm = () => {
     const order = {
       id: ordId(), userId: user.id, customerName: user.name,
       customerPhone: user.phone || "",
       items: cart.map(i => ({ ...i, type: payType })),
-      total, type: payType, status: payType === "contado" ? "pagado" : "activo",
+      total, type: payType,
+      status: payType === "contado" ? "pendiente_pago" : "activo",
       date: today(),
-      abonos: payType === "contado" ? [{ date: today(), amount: total, note: "Pago contado" }] : [],
-      saldoPendiente: payType === "contado" ? 0 : total,
+      payDueDate: payType === "contado" ? payDueDate : null,
+      abonos: [],
+      saldoPendiente: payType === "contado" ? total : total,
       semanasTotal: payType === "contado" ? 1 : weeks,
-      semanaActual: payType === "contado" ? 1 : 0,
+      semanaActual: 0,
       note,
     };
     setOrders(o => [order, ...o]);
+    setConfirmedOrder({ ...order, cartSnapshot: [...cart] });
     setCart([]);
     setStep("done");
   };
 
-  if (step === "done") return (
+  if (step === "done" && confirmedOrder) return (
     <div style={{ textAlign: "center", padding: "20px 0" }}>
       <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
       <h3 style={{ fontFamily: "Cinzel", fontSize: 20, marginBottom: 8, color: GOLD }}>¡Pedido registrado!</h3>
       <p style={{ color: C.muted, marginBottom: 24 }}>
-        {payType === "contado"
-          ? "Tu pedido está marcado como pagado."
+        {confirmedOrder.type === "contado"
+          ? confirmedOrder.payDueDate
+            ? `Fecha límite de pago: ${confirmedOrder.payDueDate}`
+            : "Pendiente de pago — coordina con Pelusa Store."
           : `Abono semanal de ${fmt(abonoSem)} por ${weeks} semanas.`}
       </p>
-      {/* Botón WA: avisar al admin del pedido */}
       {(() => {
-        const itemsText = cart.length > 0
-          ? cart.map(i => `• ${i.name} x${i.qty} — $${(i.price * i.qty).toLocaleString()}`).join("\n")
+        const snap = confirmedOrder.cartSnapshot || [];
+        const itemsText = snap.length > 0
+          ? snap.map(i => `• ${i.name} x${i.qty} — $${(i.price * i.qty).toLocaleString()}`).join("\n")
           : "Ver detalle en la app";
-        const msg = payType === "contado"
-          ? `¡Hola Pelusa Store! 🛍️\n\nAcabo de realizar un pedido:\n\n${itemsText}\n\n💵 *Total contado: $${total.toLocaleString()} MXN*\n\n¿Me confirman el pedido? Gracias 🙏`
-          : `¡Hola Pelusa Store! 🛍️\n\nAcabo de realizar un pedido a crédito:\n\n${itemsText}\n\n📅 *Total: $${total.toLocaleString()} MXN*\n💰 Abono semanal: $${abonoSem.toLocaleString()} MXN x ${weeks} semanas\n\n¿Me confirman? Gracias 🙏`;
+        const msg = confirmedOrder.type === "contado"
+          ? `¡Hola Pelusa Store! 🛍️\n\nAcabo de realizar un pedido:\n\n${itemsText}\n\n💵 *Total: $${confirmedOrder.total.toLocaleString()} MXN*${confirmedOrder.payDueDate ? `\n📅 Fecha límite de pago: ${confirmedOrder.payDueDate}` : ""}\n\n¿Me confirman el pedido? Gracias 🙏`
+          : `¡Hola Pelusa Store! 🛍️\n\nAcabo de realizar un pedido a crédito:\n\n${itemsText}\n\n📅 *Total: $${confirmedOrder.total.toLocaleString()} MXN*\n💰 Abono semanal: $${weekAbono(confirmedOrder.total, weeks).toLocaleString()} MXN x ${weeks} semanas\n\n¿Me confirman? Gracias 🙏`;
         return (
           <a href={buildWALink(msg)} target="_blank" rel="noreferrer" style={{
             display: "inline-flex", alignItems: "center", gap: 8,
@@ -577,6 +585,13 @@ const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
           ))}
         </div>
       </Field>
+
+      {payType === "contado" && (
+        <Field label="📅 Fecha límite de pago (el admin la confirmará)">
+          <input type="date" value={payDueDate} onChange={e => setPayDueDate(e.target.value)}
+            min={today()} />
+        </Field>
+      )}
 
       {payType === "credito" && (
         <Field label={`Semanas para pagar (abono: ${fmt(weekAbono(total, weeks))}/sem)`}>
@@ -660,7 +675,7 @@ const MyOrders = ({ orders, userId }) => {
   const myOrders = orders.filter(o => o.userId === userId);
   const [sel, setSel] = useState(null);
 
-  const statusColor = { activo: C.accent, pagado: C.green, cancelado: C.red };
+  const statusColor = { pendiente_pago: C.yellow, activo: C.accent, pagado: C.green, cancelado: C.red };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -678,7 +693,10 @@ const MyOrders = ({ orders, userId }) => {
               <div style={{ fontSize: 14, color: C.muted, marginTop: 2 }}>{o.date}</div>
             </div>
             <Chip color={statusColor[o.status] || C.muted}>
-              {o.status === "activo" ? "⏳ En crédito" : o.status === "pagado" ? "✅ Pagado" : "❌ Cancelado"}
+              {o.status === "activo" ? "⏳ En crédito"
+                : o.status === "pagado" ? "✅ Pagado"
+                : o.status === "pendiente_pago" ? "💵 Pago pendiente"
+                : "❌ Cancelado"}
             </Chip>
           </div>
           <div style={{ fontFamily: "JetBrains Mono", fontSize: 20, fontWeight: 700, color: C.accent, marginBottom: 8 }}>
@@ -686,6 +704,18 @@ const MyOrders = ({ orders, userId }) => {
           </div>
           {o.type === "credito" && (
             <CreditBar paid={o.total - o.saldoPendiente} total={o.total} />
+          )}
+          {o.type === "contado" && o.payDueDate && o.status === "pendiente_pago" && (
+            <div style={{
+              marginTop: 10, padding: "8px 12px", borderRadius: 8,
+              background: new Date(o.payDueDate) < new Date() ? C.redDim : C.yellowDim,
+              border: `1px solid ${new Date(o.payDueDate) < new Date() ? C.red : C.yellow}44`,
+              fontSize: 13,
+            }}>
+              {new Date(o.payDueDate) < new Date()
+                ? `⚠️ Pago vencido — fecha límite: ${o.payDueDate}`
+                : `⏰ Fecha límite de pago: ${o.payDueDate}`}
+            </div>
           )}
           {o.type === "credito" && o.saldoPendiente > 0 && (
             <div style={{ marginTop: 10, fontSize: 13, color: C.muted }}>
@@ -904,7 +934,7 @@ const AdminOrders = ({ orders, setOrders, users }) => {
     setAbonoAmt(""); setAbonoNote("");
   };
 
-  const statusColor = { activo: C.accent, pagado: C.green, cancelado: C.red };
+  const statusColor = { pendiente_pago: C.yellow, activo: C.accent, pagado: C.green, cancelado: C.red };
   const totalCredito = orders.filter(o => o.type === "credito" && o.status === "activo").reduce((s, o) => s + o.saldoPendiente, 0);
 
   return (
@@ -917,7 +947,7 @@ const AdminOrders = ({ orders, setOrders, users }) => {
       )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-        {[["todos", "Todos"], ["activo", "En crédito"], ["pagado", "Pagados"], ["cancelado", "Cancelados"]].map(([v, l]) => (
+        {[["todos", "Todos"], ["pendiente_pago", "Pago pendiente"], ["activo", "En crédito"], ["pagado", "Pagados"], ["cancelado", "Cancelados"]].map(([v, l]) => (
           <button key={v} onClick={() => setFilter(v)} style={{
             background: filter === v ? C.accent : C.surface,
             border: `1px solid ${filter === v ? C.accent : C.border}`,
