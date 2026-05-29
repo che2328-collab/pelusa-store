@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "528148137033"; // ← TU NÚMERO (para que clientes te contacten)
+const WA_NUMBER = "5219981234567"; // ← TU NÚMERO (para que clientes te contacten)
 const buildWALink = (msg, number) => {
   const clean = (number || "").replace(/\D/g, "");
   const num = clean.length >= 10 ? clean : WA_NUMBER;
@@ -348,6 +348,7 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
   const [search, setSearch] = useState("");
   const [priceMode, setPriceMode] = useState("contado");
   const [detail, setDetail] = useState(null);
+  const [selectedSizes, setSelectedSizes] = useState({});
 
   const isOfferActive = (p) => {
     if (!p.offer) return false;
@@ -443,28 +444,48 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
                 <div style={{ fontSize: 11, color: p.stock > 0 ? C.green : C.red, marginBottom: 12 }}>
                   {p.stock > 0 ? `✓ ${p.stock} disponibles` : "✗ Agotado"}
                 </div>
-                {p.sizes?.length > 0 && (
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, color: C.muted, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      👟 Tallas disponibles
+                {p.sizes?.length > 0 && (() => {
+                  const selKey = `size_${p.id}`;
+                  const selectedSize = selectedSizes[selKey];
+                  return (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 10, color: C.muted, marginBottom: 6,
+                        textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        👟 Selecciona tu talla
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                        {p.sizes.map(s => {
+                          const label = Number.isInteger(s) ? s : Number(s).toFixed(1);
+                          const isSelected = selectedSize == s;
+                          return (
+                            <button key={s} onClick={() => setSelectedSizes(sv => ({ ...sv, [selKey]: s }))} style={{
+                              background: isSelected ? GOLD : "#0a0a0a",
+                              border: `1px solid ${isSelected ? GOLD : C.border}`,
+                              color: isSelected ? "#000" : C.muted,
+                              borderRadius: 7, padding: "5px 10px",
+                              fontSize: 12, fontWeight: isSelected ? 700 : 400,
+                              cursor: "pointer", minWidth: 42,
+                              transition: "all 0.15s",
+                            }}>{label}</button>
+                          );
+                        })}
+                      </div>
+                      {!selectedSize && (
+                        <div style={{ fontSize: 11, color: C.yellow, marginTop: 5 }}>
+                          ⚠️ Selecciona una talla para continuar
+                        </div>
+                      )}
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                      {p.sizes.map(s => (
-                        <span key={s} style={{
-                          background: C.accentDim, color: C.accent,
-                          border: `1px solid ${C.accent}33`,
-                          borderRadius: 6, padding: "3px 8px",
-                          fontSize: 11, fontWeight: 600,
-                        }}>
-                          {Number.isInteger(s) ? s : Number(s).toFixed(1)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <Btn full disabled={p.stock === 0}
-                  onClick={() => onAddToCart(p, priceMode)}>
-                  {p.stock === 0 ? "Sin stock" : inCart > 0 ? "➕ Agregar otro" : "🛒 Agregar"}
+                  );
+                })()}
+                <Btn full disabled={p.stock === 0 || (p.sizes?.length > 0 && !selectedSizes[`size_${p.id}`])}
+                  onClick={() => {
+                    const size = selectedSizes[`size_${p.id}`];
+                    onAddToCart({ ...p, selectedSize: size }, priceMode);
+                  }}>
+                  {p.stock === 0 ? "Sin stock"
+                    : p.sizes?.length > 0 && !selectedSizes[`size_${p.id}`] ? "👟 Elige una talla"
+                    : inCart > 0 ? "➕ Agregar otro" : "🛒 Agregar"}
                 </Btn>
               </div>
             </Card>
@@ -578,7 +599,10 @@ const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
       {(() => {
         const snap = confirmedOrder.cartSnapshot || [];
         const itemsText = snap.length > 0
-          ? snap.map(i => `• ${i.name} x${i.qty} — $${(i.price * i.qty).toLocaleString()}`).join("\n")
+          ? snap.map(i => {
+              const sizeStr = i.selectedSize != null ? ` (Talla ${Number.isInteger(Number(i.selectedSize)) ? Number(i.selectedSize) : Number(i.selectedSize).toFixed(1)})` : "";
+              return `• ${i.name}${sizeStr} x${i.qty} — $${(i.price * i.qty).toLocaleString()}`;
+            }).join("\n")
           : "Ver detalle en la app";
         const msg = confirmedOrder.type === "contado"
           ? `¡Hola Pelusa Store! 🛍️\n\nAcabo de realizar un pedido:\n\n${itemsText}\n\n💵 *Total: $${confirmedOrder.total.toLocaleString()} MXN*${confirmedOrder.payDueDate ? `\n📅 Fecha límite de pago: ${confirmedOrder.payDueDate}` : ""}\n\n¿Me confirman el pedido? Gracias 🙏`
@@ -605,7 +629,15 @@ const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
       <div style={{ background: C.accentDim, borderRadius: 10, padding: 16 }}>
         {cart.map(i => (
           <div key={i.productId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
-            <span style={{ fontSize: 14 }}>{i.name} × {i.qty}</span>
+            <span style={{ fontSize: 14 }}>
+              {i.name}
+              {i.selectedSize != null && (
+                <span style={{ color: GOLD, fontWeight: 700, fontSize: 12, marginLeft: 6 }}>
+                  Talla {Number.isInteger(Number(i.selectedSize)) ? Number(i.selectedSize) : Number(i.selectedSize).toFixed(1)}
+                </span>
+              )}
+              {" "}× {i.qty}
+            </span>
             <span style={{ fontFamily: "JetBrains Mono", color: C.accent }}>{fmt(i.price * i.qty)}</span>
           </div>
         ))}
@@ -686,7 +718,14 @@ const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
           <img src={i.image} alt={i.name} style={{ width: 52, height: 52, borderRadius: 8, objectFit: "cover" }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 600 }}>{i.name}</div>
-            <div style={{ fontSize: 12, color: C.muted }}>{i.type === "credito" ? "Crédito" : "Contado"}</div>
+            <div style={{ fontSize: 12, color: C.muted }}>
+              {i.type === "credito" ? "Crédito" : "Contado"}
+              {i.selectedSize != null && (
+                <span style={{ color: GOLD, fontWeight: 700, marginLeft: 6 }}>
+                  · Talla {Number.isInteger(Number(i.selectedSize)) ? Number(i.selectedSize) : Number(i.selectedSize).toFixed(1)}
+                </span>
+              )}
+            </div>
             <div style={{ fontFamily: "JetBrains Mono", color: C.accent, fontSize: 14 }}>{fmt(i.price)}</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -780,7 +819,15 @@ const MyOrders = ({ orders, userId }) => {
             {sel.items.map((i, idx) => (
               <div key={idx} style={{ display: "flex", justifyContent: "space-between",
                 padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
-                <span>{i.name} × {i.qty}</span>
+                <span>
+                  {i.name}
+                  {i.selectedSize != null && (
+                    <span style={{ color: GOLD, fontWeight: 700, fontSize: 12, marginLeft: 6 }}>
+                      Talla {Number.isInteger(Number(i.selectedSize)) ? Number(i.selectedSize) : Number(i.selectedSize).toFixed(1)}
+                    </span>
+                  )}
+                  {" "}× {i.qty}
+                </span>
                 <span style={{ fontFamily: "JetBrains Mono", color: C.accent }}>{fmt(i.price * i.qty)}</span>
               </div>
             ))}
@@ -807,7 +854,7 @@ const MyOrders = ({ orders, userId }) => {
                 <BankInfoDisplay />
                 {/* Botón enviar comprobante */}
                 {(() => {
-                  const msg = `Hola Pelusa Store 👋 Te envío mi comprobante de pago para el pedido *${sel.id}* por *${fmt(sel.saldoPendiente || sel.total)}* MXN. ¡Gracias!`;
+                  const msg = `Pedido ${sel.id} — envió comprobante de abono`;
                   return (
                     <a href={buildWALink(msg)} target="_blank" rel="noreferrer" style={{
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -1729,7 +1776,7 @@ export default function App() {
     setCart(c => {
       const exists = c.find(i => i.productId === product.id && i.type === priceMode);
       if (exists) return c.map(i => i.productId === product.id && i.type === priceMode ? { ...i, qty: i.qty + 1 } : i);
-      return [...c, { productId: product.id, name: product.name, image: product.image, price, type: priceMode, qty: 1 }];
+      return [...c, { productId: product.id, name: product.name, image: product.image, price, type: priceMode, qty: 1, maxWeeks: product.maxWeeks || 8, selectedSize: product.selectedSize || null }];
     });
   };
 
