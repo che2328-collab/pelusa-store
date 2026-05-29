@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "528148137033"; // ← TU NÚMERO (para que clientes te contacten)
+const WA_NUMBER = "5219981234567"; // ← TU NÚMERO (para que clientes te contacten)
 const buildWALink = (msg, number) => {
   const clean = (number || "").replace(/\D/g, "");
   const num = clean.length >= 10 ? clean : WA_NUMBER;
@@ -443,6 +443,25 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
                 <div style={{ fontSize: 11, color: p.stock > 0 ? C.green : C.red, marginBottom: 12 }}>
                   {p.stock > 0 ? `✓ ${p.stock} disponibles` : "✗ Agotado"}
                 </div>
+                {p.sizes?.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, color: C.muted, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      👟 Tallas disponibles
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {p.sizes.map(s => (
+                        <span key={s} style={{
+                          background: C.accentDim, color: C.accent,
+                          border: `1px solid ${C.accent}33`,
+                          borderRadius: 6, padding: "3px 8px",
+                          fontSize: 11, fontWeight: 600,
+                        }}>
+                          {Number.isInteger(s) ? s : Number(s).toFixed(1)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <Btn full disabled={p.stock === 0}
                   onClick={() => onAddToCart(p, priceMode)}>
                   {p.stock === 0 ? "Sin stock" : inCart > 0 ? "➕ Agregar otro" : "🛒 Agregar"}
@@ -778,9 +797,38 @@ const MyOrders = ({ orders, userId }) => {
                 </div>
               </>
             )}
+
+            {/* Cuentas para transferencia */}
+            {(sel.status === "activo" || sel.status === "pendiente_pago") && (
+              <div style={{ background: GOLD_DIM, border: `1px solid ${GOLD}33`, borderRadius: 12, padding: 16 }}>
+                <div style={{ fontSize: 12, color: GOLD, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  🏦 Datos para tu transferencia / abono
+                </div>
+                <BankInfoDisplay />
+                {/* Botón enviar comprobante */}
+                {(() => {
+                  const msg = `Hola Pelusa Store 👋 Te envío mi comprobante de pago para el pedido *${sel.id}* por *${fmt(sel.saldoPendiente || sel.total)}* MXN. ¡Gracias!`;
+                  return (
+                    <a href={buildWALink(msg)} target="_blank" rel="noreferrer" style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      background: "#25D366", color: "#fff", borderRadius: 10,
+                      padding: "12px 20px", fontSize: 14, fontWeight: 700,
+                      textDecoration: "none", marginTop: 14,
+                      boxShadow: "0 4px 16px rgba(37,211,102,0.3)",
+                    }}>
+                      <svg width={18} height={18} viewBox="0 0 24 24" fill="white">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                      </svg>
+                      📎 Enviar comprobante
+                    </a>
+                  );
+                })()}
+              </div>
+            )}
+
             <div>
               <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>Historial de pagos</div>
-              {sel.abonos.map((a, i) => (
+              {sel.abonos?.map((a, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0",
                   borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
                   <span style={{ color: C.muted }}>{a.date} — {a.note}</span>
@@ -866,6 +914,19 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
                 <div><div style={{ fontSize: 10, color: C.muted }}>STOCK</div>
                   <div style={{ fontFamily: "JetBrains Mono", color: p.stock < 5 ? C.red : C.text, fontWeight: 700 }}>{p.stock}</div></div>
               </div>
+              {p.sizes?.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>TALLAS</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {p.sizes.map(s => (
+                      <span key={s} style={{ background: C.accentDim, color: C.accent, border: `1px solid ${C.accent}33`,
+                        borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>
+                        {Number.isInteger(s) ? s : Number(s).toFixed(1)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <Btn size="sm" onClick={() => openEdit(p)}>✏️ Editar</Btn>
                 <Btn size="sm" variant={p.active ? "ghost" : "success"} onClick={() => toggle(p.id)}>
@@ -911,23 +972,70 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
             </select>
           </Field>
           <Field label="Stock"><input type="number" value={form.stock || ""} onChange={e => set("stock", e.target.value)} /></Field>
-          <div style={{ display: "flex", gap: 16, alignItems: "center", paddingTop: 20 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, textTransform: "none", fontSize: 14, color: C.text }}>
-              <input type="checkbox" checked={!!form.active} onChange={e => set("active", e.target.checked)} style={{ width: "auto !important" }} />
-              Publicado
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, textTransform: "none", fontSize: 14, color: C.text }}>
-              <input type="checkbox" checked={!!form.offer} onChange={e => set("offer", e.target.checked)} style={{ width: "auto !important" }} />
-              Oferta
-            </label>
-          </div>
-          {form.offer && (
-            <Field label="⏱️ Horas que durará la oferta (0 = sin límite)">
-              <input type="number" value={form.offerHours || 0} onChange={e => set("offerHours", +e.target.value)}
-                placeholder="Ej: 24 horas" min={0} />
-            </Field>
-          )}
-          <Field label="URL Imagen" ><input value={form.image || ""} onChange={e => set("image", e.target.value)} placeholder="https://..." /></Field>
+        </div>
+
+        {/* Tallas para calzado */}
+        {(form.category || "").toLowerCase() === "calzado" && (() => {
+          const allSizes = [];
+          for (let s = 2; s <= 32; s += 0.5) allSizes.push(s);
+          const selected = form.sizes || [];
+          const toggle = (size) => {
+            const updated = selected.includes(size)
+              ? selected.filter(s => s !== size)
+              : [...selected, size].sort((a,b) => a-b);
+            set("sizes", updated);
+          };
+          return (
+            <div style={{ gridColumn: "1/-1", marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase",
+                letterSpacing: "0.06em", marginBottom: 10, fontWeight: 600 }}>
+                👟 Tallas disponibles (toca para seleccionar)
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {allSizes.map(size => {
+                  const isSelected = selected.includes(size);
+                  return (
+                    <button key={size} onClick={() => toggle(size)} style={{
+                      background: isSelected ? GOLD : "#0a0a0a",
+                      border: `1px solid ${isSelected ? GOLD : C.border}`,
+                      color: isSelected ? "#000" : C.muted,
+                      borderRadius: 8, padding: "6px 10px",
+                      fontSize: 12, fontWeight: isSelected ? 700 : 400,
+                      cursor: "pointer", minWidth: 44,
+                      transition: "all 0.15s",
+                    }}>
+                      {Number.isInteger(size) ? size : size.toFixed(1)}
+                    </button>
+                  );
+                })}
+              </div>
+              {selected.length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 12, color: GOLD }}>
+                  ✅ Seleccionadas: {selected.map(s => Number.isInteger(s) ? s : s.toFixed(1)).join(", ")}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, textTransform: "none", fontSize: 14, color: C.text }}>
+            <input type="checkbox" checked={!!form.active} onChange={e => set("active", e.target.checked)} style={{ width: "auto !important" }} />
+            Publicado
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, textTransform: "none", fontSize: 14, color: C.text }}>
+            <input type="checkbox" checked={!!form.offer} onChange={e => set("offer", e.target.checked)} style={{ width: "auto !important" }} />
+            Oferta
+          </label>
+        </div>
+        {form.offer && (
+          <Field label="⏱️ Horas que durará la oferta (0 = sin límite)">
+            <input type="number" value={form.offerHours || 0} onChange={e => set("offerHours", +e.target.value)}
+              placeholder="Ej: 24 horas" min={0} />
+          </Field>
+        )}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <Field label="URL Imagen"><input value={form.image || ""} onChange={e => set("image", e.target.value)} placeholder="https://..." /></Field>
           <Field label="Descripción"><textarea rows={3} value={form.description || ""} onChange={e => set("description", e.target.value)} style={{ resize: "vertical" }} /></Field>
         </div>
         {form.image && <img src={form.image} alt="preview" style={{ width: "100%", height: 160, objectFit: "cover", borderRadius: 10, marginTop: 12 }} />}
