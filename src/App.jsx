@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "528148137033"; // ← TU NÚMERO (para que clientes te contacten)
+const WA_NUMBER = "5219981234567"; // ← TU NÚMERO (para que clientes te contacten)
 const buildWALink = (msg, number) => {
   const clean = (number || "").replace(/\D/g, "");
   const num = clean.length >= 10 ? clean : WA_NUMBER;
@@ -167,7 +167,7 @@ const Modal = ({ open, onClose, title, children, wide }) => {
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         background: C.surface, border: `1px solid ${C.border}`,
-        borderRadius: 18, padding: 28, width: "100%",
+        borderRadius: 18, padding: "24px 20px", width: "100%",
         maxWidth: wide ? 780 : 460, maxHeight: "92vh", overflowY: "auto",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
@@ -427,9 +427,11 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
                   width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 800 }}>{inCart}</div>
               )}
-              <img src={p.image} alt={p.name}
-                style={{ width: "100%", height: 180, objectFit: "cover", cursor: "pointer" }}
-                onClick={() => setDetail({ ...p, priceMode })} />
+              <div style={{ background: "#0a0a0a", height: 180, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                <img src={p.image} alt={p.name}
+                  style={{ width: "100%", height: 180, objectFit: "contain", cursor: "pointer", display: "block" }}
+                  onClick={() => setDetail({ ...p, priceMode })} />
+              </div>
               <div style={{ padding: "14px 16px 16px" }}>
                 <Chip color={C.blue} small>{p.category}</Chip>
                 <div style={{ fontFamily: "Cinzel", fontSize: 15, fontWeight: 700,
@@ -496,22 +498,84 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
       {/* Modal detalle */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name} wide>
         {detail && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-            <img src={detail.image} alt={detail.name} style={{ width: "100%", borderRadius: 12, objectFit: "cover", height: 280 }} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {/* Imagen completa arriba */}
+            <div style={{
+              width: "100%", borderRadius: 14, overflow: "hidden",
+              background: "#0a0a0a",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              minHeight: 240, maxHeight: 320,
+            }}>
+              <img src={detail.image} alt={detail.name} style={{
+                width: "100%", height: "100%",
+                objectFit: "contain",
+                maxHeight: 320,
+                display: "block",
+              }} />
+            </div>
+
+            {/* Info abajo */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <Chip color={C.blue}>{detail.category}</Chip>
               <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.7 }}>{detail.description}</p>
-              <div>
-                <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>PRECIO CONTADO</div>
-                <div style={{ fontFamily: "JetBrains Mono", fontSize: 24, fontWeight: 700, color: C.green }}>{fmt(detail.priceContado)}</div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div style={{ background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Precio Contado</div>
+                  <div style={{ fontFamily: "JetBrains Mono", fontSize: 22, fontWeight: 700, color: C.green }}>{fmt(detail.priceContado)}</div>
+                </div>
+                <div style={{ background: GOLD_DIM, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                    Crédito · máx {detail.maxWeeks || 5} sem.
+                  </div>
+                  <div style={{ fontFamily: "JetBrains Mono", fontSize: 22, fontWeight: 700, color: C.accent }}>{fmt(detail.priceCredito)}</div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>≈ {fmt(weekAbono(detail.priceCredito, detail.maxWeeks || 5))}/sem</div>
+                </div>
               </div>
-              <div>
-                <div style={{ fontSize: 11, color: C.muted, marginBottom: 6 }}>PRECIO A CRÉDITO (5 sem.)</div>
-                <div style={{ fontFamily: "JetBrains Mono", fontSize: 24, fontWeight: 700, color: C.accent }}>{fmt(detail.priceCredito)}</div>
-                <div style={{ fontSize: 12, color: C.muted }}>≈ {fmt(weekAbono(detail.priceCredito, 5))} por semana</div>
-              </div>
-              <Btn full onClick={() => { onAddToCart(detail, detail.priceMode || "contado"); setDetail(null); }}>
-                🛒 Agregar al carrito
+
+              {/* Tallas si aplica */}
+              {detail.sizes?.length > 0 && (() => {
+                const selKey = `size_modal_${detail.id}`;
+                const selectedSize = selectedSizes[selKey];
+                return (
+                  <div>
+                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                      👟 Selecciona tu talla
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {detail.sizes.map(s => {
+                        const label = Number.isInteger(Number(s)) ? Number(s) : Number(s).toFixed(1);
+                        const isSelected = selectedSize == s;
+                        return (
+                          <button key={s} onClick={() => setSelectedSizes(sv => ({ ...sv, [selKey]: s }))} style={{
+                            background: isSelected ? GOLD : "#0a0a0a",
+                            border: `1px solid ${isSelected ? GOLD : C.border}`,
+                            color: isSelected ? "#000" : C.muted,
+                            borderRadius: 8, padding: "7px 12px",
+                            fontSize: 13, fontWeight: isSelected ? 700 : 400,
+                            cursor: "pointer", minWidth: 46,
+                            transition: "all 0.15s",
+                          }}>{label}</button>
+                        );
+                      })}
+                    </div>
+                    {!selectedSize && (
+                      <div style={{ fontSize: 11, color: C.yellow, marginTop: 6 }}>⚠️ Selecciona una talla para continuar</div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              <Btn full
+                disabled={detail.sizes?.length > 0 && !selectedSizes[`size_modal_${detail.id}`]}
+                onClick={() => {
+                  const size = selectedSizes[`size_modal_${detail.id}`];
+                  onAddToCart({ ...detail, selectedSize: size }, detail.priceMode || "contado");
+                  setDetail(null);
+                }}>
+                {detail.sizes?.length > 0 && !selectedSizes[`size_modal_${detail.id}`]
+                  ? "👟 Elige una talla"
+                  : "🛒 Agregar al carrito"}
               </Btn>
             </div>
           </div>
@@ -944,9 +1008,9 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
         {products.map(p => (
           <Card key={p.id} style={{ opacity: p.active ? 1 : 0.5, padding: 0, overflow: "hidden" }}>
-            <div style={{ position: "relative" }}>
+            <div style={{ position: "relative", background: "#0a0a0a", height: 150 }}>
               <img src={p.image || "https://via.placeholder.com/400"} alt={p.name}
-                style={{ width: "100%", height: 150, objectFit: "cover" }} />
+                style={{ width: "100%", height: 150, objectFit: "contain", display: "block" }} />
               {p.offer && <div style={{ position: "absolute", top: 8, left: 8, background: C.red, color: "#fff",
                 borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>OFERTA</div>}
             </div>
