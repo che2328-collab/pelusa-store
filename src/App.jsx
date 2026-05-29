@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "5219981234567"; // ← TU NÚMERO (para que clientes te contacten)
+const WA_NUMBER = "528148137033"; // ← TU NÚMERO (para que clientes te contacten)
 const buildWALink = (msg, number) => {
   const clean = (number || "").replace(/\D/g, "");
   const num = clean.length >= 10 ? clean : WA_NUMBER;
