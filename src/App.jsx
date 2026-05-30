@@ -1047,12 +1047,19 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>TALLAS</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {p.sizes.map(s => (
-                      <span key={s} style={{ background: C.accentDim, color: C.accent, border: `1px solid ${C.accent}33`,
-                        borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>
-                        {Number.isInteger(s) ? s : Number(s).toFixed(1)}
-                      </span>
-                    ))}
+                    {p.sizes.map((s, i) => {
+                      const isNum = !isNaN(Number(s));
+                      const label = isNum
+                        ? (Number.isInteger(Number(s)) ? Number(s) : Number(s).toFixed(1))
+                        : s;
+                      return (
+                        <span key={i} style={{ background: C.accentDim, color: C.accent,
+                          border: `1px solid ${C.accent}33`,
+                          borderRadius: 6, padding: "2px 7px", fontSize: 11, fontWeight: 600 }}>
+                          {label}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               )}
