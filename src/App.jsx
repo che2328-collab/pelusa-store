@@ -55,7 +55,7 @@ const initOrders = [
 const GOLD = "#C9A84C";
 const GOLD_LIGHT = "#E2C06A";
 const GOLD_DIM = "rgba(201,168,76,0.13)";
-const WA_NUMBER = "528148137033"; // ← TU NÚMERO (para que clientes te contacten)
+const WA_NUMBER = "528148137033"; // Pelusa Store
 const buildWALink = (msg, number) => {
   const clean = (number || "").replace(/\D/g, "");
   const num = clean.length >= 10 ? clean : WA_NUMBER;
@@ -449,16 +449,19 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
                 {p.sizes?.length > 0 && (() => {
                   const selKey = `size_${p.id}`;
                   const selectedSize = selectedSizes[selKey];
+                  const isNumeric = typeof p.sizes[0] === "number";
                   return (
                     <div style={{ marginBottom: 12 }}>
                       <div style={{ fontSize: 10, color: C.muted, marginBottom: 6,
                         textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                        👟 Selecciona tu talla
+                        {isNumeric ? "👟" : "👕"} Selecciona tu talla
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                         {p.sizes.map(s => {
-                          const label = Number.isInteger(s) ? s : Number(s).toFixed(1);
-                          const isSelected = selectedSize == s;
+                          const label = isNumeric
+                            ? (Number.isInteger(Number(s)) ? Number(s) : Number(s).toFixed(1))
+                            : s;
+                          const isSelected = String(selectedSize) === String(s);
                           return (
                             <button key={s} onClick={() => setSelectedSizes(sv => ({ ...sv, [selKey]: s }))} style={{
                               background: isSelected ? GOLD : "#0a0a0a",
@@ -466,7 +469,7 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
                               color: isSelected ? "#000" : C.muted,
                               borderRadius: 7, padding: "5px 10px",
                               fontSize: 12, fontWeight: isSelected ? 700 : 400,
-                              cursor: "pointer", minWidth: 42,
+                              cursor: "pointer", minWidth: isNumeric ? 42 : 36,
                               transition: "all 0.15s",
                             }}>{label}</button>
                           );
@@ -485,8 +488,9 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
                     const size = selectedSizes[`size_${p.id}`];
                     onAddToCart({ ...p, selectedSize: size }, priceMode);
                   }}>
-                  {p.stock === 0 ? "Sin stock"
-                    : p.sizes?.length > 0 && !selectedSizes[`size_${p.id}`] ? "👟 Elige una talla"
+                  {p.stock === 0 ? "✗ Sin stock"
+                    : p.sizes?.length > 0 && !selectedSizes[`size_${p.id}`]
+                      ? `${typeof p.sizes[0] === "number" ? "👟" : "👕"} Elige una talla`
                     : inCart > 0 ? "➕ Agregar otro" : "🛒 Agregar"}
                 </Btn>
               </div>
@@ -537,15 +541,18 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
               {detail.sizes?.length > 0 && (() => {
                 const selKey = `size_modal_${detail.id}`;
                 const selectedSize = selectedSizes[selKey];
+                const isNumeric = typeof detail.sizes[0] === "number";
                 return (
                   <div>
                     <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      👟 Selecciona tu talla
+                      {isNumeric ? "👟" : "👕"} Selecciona tu talla
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {detail.sizes.map(s => {
-                        const label = Number.isInteger(Number(s)) ? Number(s) : Number(s).toFixed(1);
-                        const isSelected = selectedSize == s;
+                        const label = isNumeric
+                          ? (Number.isInteger(Number(s)) ? Number(s) : Number(s).toFixed(1))
+                          : s;
+                        const isSelected = String(selectedSize) === String(s);
                         return (
                           <button key={s} onClick={() => setSelectedSizes(sv => ({ ...sv, [selKey]: s }))} style={{
                             background: isSelected ? GOLD : "#0a0a0a",
@@ -553,7 +560,7 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
                             color: isSelected ? "#000" : C.muted,
                             borderRadius: 8, padding: "7px 12px",
                             fontSize: 13, fontWeight: isSelected ? 700 : 400,
-                            cursor: "pointer", minWidth: 46,
+                            cursor: "pointer", minWidth: isNumeric ? 46 : 40,
                             transition: "all 0.15s",
                           }}>{label}</button>
                         );
@@ -611,7 +618,7 @@ const BankInfoDisplay = () => {
 // ═══════════════════════════════════════════════════════════════
 //  CARRITO + CHECKOUT
 // ═══════════════════════════════════════════════════════════════
-const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
+const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, onClose }) => {
   const [step, setStep] = useState("cart"); // cart | confirm
   const [payType, setPayType] = useState("contado");
   const [weeks, setWeeks] = useState(5);
@@ -644,6 +651,17 @@ const Cart = ({ cart, setCart, user, orders, setOrders, onClose }) => {
       note,
     };
     setOrders(o => [order, ...o]);
+    // ── Descontar stock por cada producto del pedido ──
+    setProducts(ps => ps.map(p => {
+      const item = cart.find(i => i.productId === p.id);
+      if (!item) return p;
+      const newStock = Math.max(0, (p.stock || 0) - item.qty);
+      const updated = { ...p, stock: newStock, active: newStock > 0 ? p.active : false };
+      // Sincronizar con Firebase
+      const { id, ...data } = updated;
+      setDoc(doc(db, "products", String(id)), data).catch(() => {});
+      return updated;
+    }));
     setConfirmedOrder({ ...order, cartSnapshot: [...cart] });
     setCart([]);
     setStep("done");
@@ -1123,6 +1141,47 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
               {selected.length > 0 && (
                 <div style={{ marginTop: 10, fontSize: 12, color: GOLD }}>
                   ✅ Seleccionadas: {selected.map(s => Number.isInteger(s) ? s : s.toFixed(1)).join(", ")}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Tallas para ropa */}
+        {(form.category || "").toLowerCase() === "ropa" && (() => {
+          const clothSizes = ["CH", "M", "L", "XL", "XXL", "XXXL"];
+          const selected = form.sizes || [];
+          const toggle = (size) => {
+            const updated = selected.includes(size)
+              ? selected.filter(s => s !== size)
+              : [...selected, size];
+            set("sizes", updated);
+          };
+          return (
+            <div style={{ gridColumn: "1/-1", marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase",
+                letterSpacing: "0.06em", marginBottom: 10, fontWeight: 600 }}>
+                👕 Tallas disponibles (toca para seleccionar)
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {clothSizes.map(size => {
+                  const isSelected = selected.includes(size);
+                  return (
+                    <button key={size} onClick={() => toggle(size)} style={{
+                      background: isSelected ? GOLD : "#0a0a0a",
+                      border: `1px solid ${isSelected ? GOLD : C.border}`,
+                      color: isSelected ? "#000" : C.muted,
+                      borderRadius: 8, padding: "8px 16px",
+                      fontSize: 13, fontWeight: isSelected ? 700 : 400,
+                      cursor: "pointer", minWidth: 54,
+                      transition: "all 0.15s",
+                    }}>{size}</button>
+                  );
+                })}
+              </div>
+              {selected.length > 0 && (
+                <div style={{ marginTop: 10, fontSize: 12, color: GOLD }}>
+                  ✅ Seleccionadas: {selected.join(", ")}
                 </div>
               )}
             </div>
@@ -1982,6 +2041,7 @@ export default function App() {
           <Cart
             cart={cart} setCart={setCart}
             user={currentUser} orders={orders} setOrders={setOrdersFirebase}
+            setProducts={setProducts}
             onClose={() => { setCartOpen(false); setTab("orders"); }}
           />
         </Modal>
