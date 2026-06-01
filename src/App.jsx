@@ -405,7 +405,12 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
       {/* Grid productos */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
         {visible.map(p => {
-          const price = priceMode === "contado" ? p.priceContado : p.priceCredito;
+          const pm = p.payMode || "ambos";
+          // Si el modo actual no está disponible, usar el que sí está
+          const effectiveMode = pm === "contado" ? "contado"
+            : pm === "credito" ? "credito"
+            : priceMode;
+          const price = effectiveMode === "contado" ? p.priceContado : p.priceCredito;
           const inCart = cartCount(p.id);
           return (
             <Card key={p.id} style={{ padding: 0, overflow: "hidden", position: "relative" }}>
@@ -438,9 +443,24 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
                   margin: "8px 0 4px", lineHeight: 1.3 }}>{p.name}</div>
                 <div style={{ fontFamily: "JetBrains Mono", fontSize: 20, fontWeight: 700,
                   color: C.accent, marginBottom: 4 }}>{fmt(price)}</div>
-                {priceMode === "credito" && (
+                {pm === "ambos" && effectiveMode === "credito" && (
                   <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>
                     ≈ {fmt(weekAbono(p.priceCredito, p.maxWeeks || 5))}/sem · máx {p.maxWeeks || 5} semanas
+                  </div>
+                )}
+                {pm === "contado" && (
+                  <div style={{ fontSize: 11, color: C.green, marginBottom: 10, fontWeight: 600 }}>
+                    💵 Solo contado
+                  </div>
+                )}
+                {pm === "credito" && (
+                  <div style={{ fontSize: 11, color: C.accent, marginBottom: 10 }}>
+                    📅 Solo crédito · ≈ {fmt(weekAbono(p.priceCredito, p.maxWeeks || 5))}/sem · máx {p.maxWeeks || 5} sem
+                  </div>
+                )}
+                {pm === "ambos" && effectiveMode === "contado" && (
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>
+                    Crédito: {fmt(p.priceCredito)}
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: p.stock > 0 ? C.green : C.red, marginBottom: 12 }}>
@@ -731,14 +751,27 @@ const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, onClose }) 
 
       <Field label="Forma de pago">
         <div style={{ display: "flex", gap: 8 }}>
-          {[["contado", "💵 Contado"], ["credito", "📅 Crédito semanal"]].map(([v, l]) => (
-            <button key={v} onClick={() => setPayType(v)} style={{
-              flex: 1, background: payType === v ? C.accent : C.surface,
-              border: `1px solid ${payType === v ? C.accent : C.border}`,
-              color: payType === v ? "#fff" : C.muted,
-              borderRadius: 8, padding: "10px", fontSize: 13, fontWeight: 600,
-            }}>{l}</button>
-          ))}
+          {(() => {
+            // Determinar qué modos están disponibles según los productos del carrito
+            const modes = new Set(cart.map(i => i.payMode || "ambos"));
+            const showContado = [...modes].every(m => m !== "credito");
+            const showCredito = [...modes].every(m => m !== "contado");
+            const opts = [];
+            if (showContado || modes.has("ambos") || modes.has("contado")) opts.push(["contado", "💵 Contado"]);
+            if (showCredito || modes.has("ambos") || modes.has("credito")) opts.push(["credito", "📅 Crédito semanal"]);
+            // Si solo hay un modo, seleccionarlo automáticamente
+            const available = cart.every(i => (i.payMode || "ambos") === "contado") ? ["contado"]
+              : cart.every(i => (i.payMode || "ambos") === "credito") ? ["credito"]
+              : ["contado", "credito"];
+            return available.map(v => (
+              <button key={v} onClick={() => setPayType(v)} style={{
+                flex: 1, background: payType === v ? C.accent : C.surface,
+                border: `1px solid ${payType === v ? C.accent : C.border}`,
+                color: payType === v ? "#fff" : C.muted,
+                borderRadius: 8, padding: "10px", fontSize: 13, fontWeight: 600,
+              }}>{v === "contado" ? "💵 Contado" : "📅 Crédito semanal"}</button>
+            ));
+          })()}
         </div>
       </Field>
 
@@ -1035,13 +1068,22 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
             <div style={{ padding: "14px 16px" }}>
               <Chip color={C.blue} small>{p.category}</Chip>
               <div style={{ fontFamily: "Cinzel", fontSize: 15, fontWeight: 700, margin: "8px 0 6px" }}>{p.name}</div>
-              <div style={{ display: "flex", gap: 16, marginBottom: 12 }}>
-                <div><div style={{ fontSize: 10, color: C.muted }}>CONTADO</div>
-                  <div style={{ fontFamily: "JetBrains Mono", color: C.green, fontWeight: 700 }}>{fmt(p.priceContado)}</div></div>
-                <div><div style={{ fontSize: 10, color: C.muted }}>CRÉDITO</div>
-                  <div style={{ fontFamily: "JetBrains Mono", color: C.accent, fontWeight: 700 }}>{fmt(p.priceCredito)}</div></div>
+              <div style={{ display: "flex", gap: 16, marginBottom: 6 }}>
+                {(p.payMode || "ambos") !== "credito" && (
+                  <div><div style={{ fontSize: 10, color: C.muted }}>CONTADO</div>
+                    <div style={{ fontFamily: "JetBrains Mono", color: C.green, fontWeight: 700 }}>{fmt(p.priceContado)}</div></div>
+                )}
+                {(p.payMode || "ambos") !== "contado" && (
+                  <div><div style={{ fontSize: 10, color: C.muted }}>CRÉDITO</div>
+                    <div style={{ fontFamily: "JetBrains Mono", color: C.accent, fontWeight: 700 }}>{fmt(p.priceCredito)}</div></div>
+                )}
                 <div><div style={{ fontSize: 10, color: C.muted }}>STOCK</div>
                   <div style={{ fontFamily: "JetBrains Mono", color: p.stock < 5 ? C.red : C.text, fontWeight: 700 }}>{p.stock}</div></div>
+              </div>
+              <div style={{ marginBottom: 8 }}>
+                {p.payMode === "contado" && <Chip color={C.green} small>💵 Solo contado</Chip>}
+                {p.payMode === "credito" && <Chip color={C.accent} small>📅 Solo crédito</Chip>}
+                {(!p.payMode || p.payMode === "ambos") && <Chip color={C.blue} small>💵📅 Contado y crédito</Chip>}
               </div>
               {p.sizes?.length > 0 && (
                 <div style={{ marginBottom: 10 }}>
@@ -1100,13 +1142,42 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
               </div>}
             </div>
           </Field>
-          <Field label="Precio contado"><input type="number" value={form.priceContado || ""} onChange={e => set("priceContado", e.target.value)} /></Field>
-          <Field label="Precio crédito"><input type="number" value={form.priceCredito || ""} onChange={e => set("priceCredito", e.target.value)} /></Field>
-          <Field label="Máximo de semanas a crédito">
-            <select value={form.maxWeeks || 8} onChange={e => set("maxWeeks", +e.target.value)}>
-              {[2,3,4,5,6,8,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
-            </select>
+          <Field label="Modalidad de pago disponible">
+            <div style={{ display: "flex", gap: 8 }}>
+              {[
+                { val: "ambos", label: "💵📅 Contado y Crédito" },
+                { val: "contado", label: "💵 Solo Contado" },
+                { val: "credito", label: "📅 Solo Crédito" },
+              ].map(opt => (
+                <button key={opt.val} onClick={() => set("payMode", opt.val)} style={{
+                  flex: 1, background: (form.payMode || "ambos") === opt.val ? GOLD : "#0a0a0a",
+                  border: `1px solid ${(form.payMode || "ambos") === opt.val ? GOLD : C.border}`,
+                  color: (form.payMode || "ambos") === opt.val ? "#000" : C.muted,
+                  borderRadius: 8, padding: "8px 6px", fontSize: 11, fontWeight: 600,
+                  cursor: "pointer", textAlign: "center", lineHeight: 1.4,
+                  transition: "all 0.15s",
+                }}>{opt.label}</button>
+              ))}
+            </div>
           </Field>
+
+          {(form.payMode || "ambos") !== "credito" && (
+            <Field label="Precio contado">
+              <input type="number" value={form.priceContado || ""} onChange={e => set("priceContado", e.target.value)} />
+            </Field>
+          )}
+          {(form.payMode || "ambos") !== "contado" && (
+            <>
+              <Field label="Precio crédito">
+                <input type="number" value={form.priceCredito || ""} onChange={e => set("priceCredito", e.target.value)} />
+              </Field>
+              <Field label="Máximo de semanas a crédito">
+                <select value={form.maxWeeks || 8} onChange={e => set("maxWeeks", +e.target.value)}>
+                  {[2,3,4,5,6,8,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
+                </select>
+              </Field>
+            </>
+          )}
           <Field label="Stock"><input type="number" value={form.stock || ""} onChange={e => set("stock", e.target.value)} /></Field>
         </div>
 
@@ -1906,7 +1977,7 @@ export default function App() {
     setCart(c => {
       const exists = c.find(i => i.productId === product.id && i.type === priceMode);
       if (exists) return c.map(i => i.productId === product.id && i.type === priceMode ? { ...i, qty: i.qty + 1 } : i);
-      return [...c, { productId: product.id, name: product.name, image: product.image, price, type: priceMode, qty: 1, maxWeeks: product.maxWeeks || 8, selectedSize: product.selectedSize || null }];
+      return [...c, { productId: product.id, name: product.name, image: product.image, price, type: priceMode, qty: 1, maxWeeks: product.maxWeeks || 8, selectedSize: product.selectedSize || null, payMode: product.payMode || "ambos" }];
     });
   };
 
