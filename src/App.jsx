@@ -7,7 +7,8 @@ import {
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signOut, onAuthStateChanged
+  signOut, onAuthStateChanged,
+  sendPasswordResetEmail
 } from "firebase/auth";
 
 // ═══════════════════════════════════════════════════════════════
@@ -1395,11 +1396,16 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
 // ═══════════════════════════════════════════════════════════════
 //  ADMIN: PEDIDOS + ABONOS
 // ═══════════════════════════════════════════════════════════════
-const AdminOrders = ({ orders, setOrders, users }) => {
+const AdminOrders = ({ orders, setOrders, users, products }) => {
   const [filter, setFilter] = useState("todos");
   const [sel, setSel] = useState(null);
   const [abonoAmt, setAbonoAmt] = useState("");
   const [abonoNote, setAbonoNote] = useState("");
+  const [editingOrder, setEditingOrder] = useState(false);
+  const [editForm, setEditForm] = useState({});
+  const [newOrderModal, setNewOrderModal] = useState(false);
+  const [newOrder, setNewOrder] = useState({ userId: "", items: [], type: "contado", payDueDate: "", semanasTotal: 5, note: "" });
+  const [newItem, setNewItem] = useState({ productId: "", name: "", price: "", qty: 1 });
 
   const filtered = filter === "todos" ? orders : orders.filter(o =>
     filter === "credito" ? o.type === "credito" && o.status === "activo" : o.status === filter
@@ -1412,14 +1418,12 @@ const AdminOrders = ({ orders, setOrders, users }) => {
       if (o.id !== orderId) return o;
       const newSaldo = Math.max(0, o.saldoPendiente - amt);
       return {
-        ...o,
-        saldoPendiente: newSaldo,
+        ...o, saldoPendiente: newSaldo,
         status: newSaldo === 0 ? "pagado" : "activo",
         semanaActual: o.semanaActual + 1,
         abonos: [...o.abonos, { date: today(), amount: amt, note: abonoNote || `Abono semana ${o.semanaActual + 1}` }],
       };
     }));
-    // update sel
     setSel(prev => {
       if (!prev || prev.id !== orderId) return prev;
       const newSaldo = Math.max(0, prev.saldoPendiente - amt);
@@ -1433,6 +1437,61 @@ const AdminOrders = ({ orders, setOrders, users }) => {
     setAbonoAmt(""); setAbonoNote("");
   };
 
+  const saveOrderEdit = () => {
+    const updated = {
+      ...sel, ...editForm,
+      type: editForm.type,
+      status: editForm.type === "contado" && sel.type === "credito" ? "pendiente_pago"
+        : editForm.type === "credito" && sel.type === "contado" ? "activo"
+        : sel.status,
+      saldoPendiente: editForm.type === "contado" && sel.type === "credito" ? sel.total : sel.saldoPendiente,
+      semanasTotal: +editForm.semanasTotal || sel.semanasTotal,
+      payDueDate: editForm.payDueDate || sel.payDueDate || null,
+    };
+    setOrders(os => os.map(o => o.id === sel.id ? updated : o));
+    setSel(updated);
+    setEditingOrder(false);
+  };
+
+  const createOrder = () => {
+    if (!newOrder.userId || newOrder.items.length === 0) {
+      alert("Selecciona un cliente y agrega al menos un producto."); return;
+    }
+    const user = users.find(u => u.id === newOrder.userId);
+    const total = newOrder.items.reduce((s, i) => s + i.price * i.qty, 0);
+    const order = {
+      id: ordId(), userId: newOrder.userId,
+      customerName: user?.name || "Cliente",
+      customerPhone: user?.phone || "",
+      items: newOrder.items,
+      total, type: newOrder.type,
+      status: newOrder.type === "contado" ? "pendiente_pago" : "activo",
+      date: today(),
+      payDueDate: newOrder.payDueDate || null,
+      abonos: [],
+      saldoPendiente: total,
+      semanasTotal: +newOrder.semanasTotal || 5,
+      semanaActual: 0,
+      note: newOrder.note,
+    };
+    setOrders(os => [order, ...os]);
+    setNewOrderModal(false);
+    setNewOrder({ userId: "", items: [], type: "contado", payDueDate: "", semanasTotal: 5, note: "" });
+    setNewItem({ productId: "", name: "", price: "", qty: 1 });
+    alert(`✅ Pedido ${order.id} creado para ${order.customerName}`);
+  };
+
+  const addItemToNewOrder = () => {
+    if (!newItem.name || !newItem.price) { alert("Agrega nombre y precio del producto."); return; }
+    const item = {
+      productId: newItem.productId || String(Date.now()),
+      name: newItem.name, price: +newItem.price, qty: +newItem.qty || 1,
+      type: newOrder.type,
+    };
+    setNewOrder(o => ({ ...o, items: [...o.items, item] }));
+    setNewItem({ productId: "", name: "", price: "", qty: 1 });
+  };
+
   const statusColor = { pendiente_pago: C.yellow, activo: C.accent, pagado: C.green, cancelado: C.red };
   const totalCredito = orders.filter(o => o.type === "credito" && o.status === "activo").reduce((s, o) => s + o.saldoPendiente, 0);
 
@@ -1444,6 +1503,10 @@ const AdminOrders = ({ orders, setOrders, users }) => {
           💰 Cartera de crédito activa: <strong style={{ fontFamily: "JetBrains Mono", color: C.accent }}>{fmt(totalCredito)}</strong>
         </div>
       )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <Btn onClick={() => setNewOrderModal(true)}>➕ Generar pedido para cliente</Btn>
+      </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
         {[["todos", "Todos"], ["pendiente_pago", "Pago pendiente"], ["activo", "En crédito"], ["pagado", "Pagados"], ["cancelado", "Cancelados"]].map(([v, l]) => (
@@ -1583,6 +1646,52 @@ const AdminOrders = ({ orders, setOrders, users }) => {
               </>
             )}
 
+            {/* ── EDITAR PEDIDO ── */}
+            {!editingOrder ? (
+              <Btn size="sm" variant="ghost" onClick={() => {
+                setEditForm({
+                  type: sel.type,
+                  payDueDate: sel.payDueDate || "",
+                  semanasTotal: sel.semanasTotal || 5,
+                });
+                setEditingOrder(true);
+              }}>✏️ Modificar pedido</Btn>
+            ) : (
+              <div style={{ background: GOLD_DIM, border: `1px solid ${GOLD}33`, borderRadius: 12, padding: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: GOLD, marginBottom: 12 }}>✏️ Modificar pedido</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <Field label="Tipo de pago">
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {[["contado","💵 Contado"],["credito","📅 Crédito"]].map(([v,l]) => (
+                        <button key={v} onClick={() => setEditForm(f => ({ ...f, type: v }))} style={{
+                          flex: 1, background: editForm.type === v ? GOLD : C.surface,
+                          border: `1px solid ${editForm.type === v ? GOLD : C.border}`,
+                          color: editForm.type === v ? "#000" : C.muted,
+                          borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                        }}>{l}</button>
+                      ))}
+                    </div>
+                  </Field>
+                  {editForm.type === "contado" && (
+                    <Field label="📅 Fecha límite de pago">
+                      <input type="date" value={editForm.payDueDate || ""} onChange={e => setEditForm(f => ({ ...f, payDueDate: e.target.value }))} />
+                    </Field>
+                  )}
+                  {editForm.type === "credito" && (
+                    <Field label="Semanas para pagar">
+                      <select value={editForm.semanasTotal || 5} onChange={e => setEditForm(f => ({ ...f, semanasTotal: +e.target.value }))}>
+                        {[2,3,4,5,6,8,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
+                      </select>
+                    </Field>
+                  )}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Btn variant="ghost" size="sm" onClick={() => setEditingOrder(false)}>Cancelar</Btn>
+                    <Btn size="sm" onClick={saveOrderEdit}>💾 Guardar cambios</Btn>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
               <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, textTransform: "uppercase" }}>Historial de pagos</div>
               {sel.abonos.map((a, i) => (
@@ -1618,12 +1727,100 @@ const AdminOrders = ({ orders, setOrders, users }) => {
           </div>
         )}
       </Modal>
+      {/* Modal nuevo pedido */}
+      <Modal open={newOrderModal} onClose={() => setNewOrderModal(false)} title="➕ Generar pedido para cliente" wide>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Cliente">
+            <select value={newOrder.userId} onChange={e => setNewOrder(o => ({ ...o, userId: e.target.value }))}>
+              <option value="">— Selecciona un cliente —</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.name} — {u.email}</option>)}
+            </select>
+          </Field>
+
+          <Field label="Tipo de pago">
+            <div style={{ display: "flex", gap: 8 }}>
+              {[["contado","💵 Contado"],["credito","📅 Crédito"]].map(([v,l]) => (
+                <button key={v} onClick={() => setNewOrder(o => ({ ...o, type: v }))} style={{
+                  flex: 1, background: newOrder.type === v ? GOLD : C.surface,
+                  border: `1px solid ${newOrder.type === v ? GOLD : C.border}`,
+                  color: newOrder.type === v ? "#000" : C.muted,
+                  borderRadius: 8, padding: "8px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                }}>{l}</button>
+              ))}
+            </div>
+          </Field>
+
+          {newOrder.type === "contado" && (
+            <Field label="Fecha límite de pago">
+              <input type="date" value={newOrder.payDueDate} onChange={e => setNewOrder(o => ({ ...o, payDueDate: e.target.value }))} />
+            </Field>
+          )}
+          {newOrder.type === "credito" && (
+            <Field label="Semanas para pagar">
+              <select value={newOrder.semanasTotal} onChange={e => setNewOrder(o => ({ ...o, semanasTotal: +e.target.value }))}>
+                {[2,3,4,5,6,8,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
+              </select>
+            </Field>
+          )}
+
+          {/* Agregar productos */}
+          <div style={{ background: C.bg, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 12, color: GOLD, fontWeight: 700, marginBottom: 10 }}>📦 Agregar productos</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+              <Field label="Producto">
+                <select value={newItem.productId} onChange={e => {
+                  const p = products.find(x => String(x.id) === e.target.value);
+                  setNewItem(i => ({
+                    ...i, productId: e.target.value,
+                    name: p?.name || "",
+                    price: newOrder.type === "credito" ? (p?.priceCredito || "") : (p?.priceContado || ""),
+                  }));
+                }}>
+                  <option value="">— Producto —</option>
+                  {products.filter(p => p.active).map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Precio"><input type="number" value={newItem.price} onChange={e => setNewItem(i => ({ ...i, price: e.target.value }))} placeholder="MXN" /></Field>
+              <Field label="Cantidad"><input type="number" value={newItem.qty} min={1} onChange={e => setNewItem(i => ({ ...i, qty: +e.target.value }))} /></Field>
+              <div style={{ display: "flex", alignItems: "flex-end" }}>
+                <Btn size="sm" onClick={addItemToNewOrder} style={{ width: "100%", justifyContent: "center" }}>➕ Agregar</Btn>
+              </div>
+            </div>
+            {newOrder.items.map((item, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0",
+                borderTop: `1px solid ${C.border}`, fontSize: 13 }}>
+                <span>{item.name} × {item.qty}</span>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <span style={{ fontFamily: "JetBrains Mono", color: GOLD }}>{fmt(item.price * item.qty)}</span>
+                  <button onClick={() => setNewOrder(o => ({ ...o, items: o.items.filter((_,idx) => idx !== i) }))}
+                    style={{ background: "none", border: "none", color: C.red, cursor: "pointer" }}>✕</button>
+                </div>
+              </div>
+            ))}
+            {newOrder.items.length > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 0",
+                fontWeight: 700, borderTop: `1px solid ${C.border}` }}>
+                <span>Total</span>
+                <span style={{ fontFamily: "JetBrains Mono", color: GOLD }}>
+                  {fmt(newOrder.items.reduce((s,i) => s + i.price * i.qty, 0))}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <Field label="Nota (opcional)">
+            <input value={newOrder.note} onChange={e => setNewOrder(o => ({ ...o, note: e.target.value }))} placeholder="Indicaciones..." />
+          </Field>
+
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Btn variant="ghost" onClick={() => setNewOrderModal(false)}>Cancelar</Btn>
+            <Btn onClick={createOrder}>✅ Crear pedido</Btn>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
-
-// ═══════════════════════════════════════════════════════════════
-//  ADMIN: CLIENTES
 // ═══════════════════════════════════════════════════════════════
 const AdminUsers = ({ users, orders, setUsers }) => {
   const [sel, setSel] = useState(null);
@@ -1730,6 +1927,17 @@ const AdminUsers = ({ users, orders, setUsers }) => {
                 </div>
                 <Btn size="sm" onClick={() => { setEditForm({ name: sel.user.name, phone: sel.user.phone, address: sel.user.address }); setEditing(true); }}>
                   ✏️ Editar datos del cliente
+                </Btn>
+                <Btn size="sm" variant="blue" onClick={async () => {
+                  if (!confirm(`¿Enviar correo de recuperación de contraseña a ${sel.user.email}?`)) return;
+                  try {
+                    await sendPasswordResetEmail(auth, sel.user.email);
+                    alert(`✅ Correo de recuperación enviado a ${sel.user.email}\n\nEl cliente recibirá un link para crear nueva contraseña.`);
+                  } catch (e) {
+                    alert("Error al enviar el correo. Verifica que el correo esté registrado.");
+                  }
+                }}>
+                  🔑 Enviar recuperación de contraseña
                 </Btn>
               </>
             ) : (
@@ -2206,7 +2414,7 @@ export default function App() {
           {tab === "orders" && !isAdmin && <MyOrders orders={orders} userId={currentUser.id} />}
           {tab === "stats" && isAdmin && <AdminStats orders={orders} products={products} users={users} />}
           {tab === "products" && isAdmin && <AdminProducts products={products} setProducts={setProductsFirebase} categories={categories} setCategories={setCategories} />}
-          {tab === "orders" && isAdmin && <AdminOrders orders={orders} setOrders={setOrdersFirebase} users={users} />}
+          {tab === "orders" && isAdmin && <AdminOrders orders={orders} setOrders={setOrdersFirebase} users={users} products={products} />}
           {tab === "users" && isAdmin && <AdminUsers users={users} orders={orders} setUsers={setUsers} />}
           {tab === "bank" && isAdmin && <BankInfo />}
         </div>
