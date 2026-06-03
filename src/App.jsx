@@ -1051,13 +1051,84 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
   const del = (id) => { if (confirm("¿Eliminar?")) setProducts(ps => ps.filter(p => p.id !== id)); };
   const toggle = (id) => setProducts(ps => ps.map(p => p.id === id ? { ...p, active: !p.active } : p));
 
+  const [filterCat, setFilterCat] = useState("Todos");
+  const [filterStatus, setFilterStatus] = useState("todos");
+  const [search, setSearch] = useState("");
+    const matchCat = filterCat === "Todos" || p.category === filterCat;
+    const matchStatus = filterStatus === "todos"
+      ? true : filterStatus === "activos" ? p.active : !p.active;
+    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
+    return matchCat && matchStatus && matchSearch;
+  });
+
+  const allCats = ["Todos", ...new Set(products.map(p => p.category).filter(Boolean))];
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
+      {/* Barra superior */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="🔍 Buscar producto..." style={{ maxWidth: 220 }} />
+        <div style={{ flex: 1 }} />
         <Btn onClick={openNew}>＋ Nuevo producto</Btn>
       </div>
+
+      {/* Filtros por categoría */}
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6, marginBottom: 12 }}>
+        {allCats.map(c => (
+          <button key={c} onClick={() => setFilterCat(c)} style={{
+            background: filterCat === c ? GOLD : C.surface,
+            border: `1px solid ${filterCat === c ? GOLD : C.border}`,
+            color: filterCat === c ? "#000" : C.muted,
+            borderRadius: 999, padding: "5px 16px", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
+            cursor: "pointer",
+          }}>{c}</button>
+        ))}
+      </div>
+
+      {/* Filtros por estado */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, alignItems: "center", flexWrap: "wrap" }}>
+        {[["todos","Todos"], ["activos","✅ Publicados"], ["ocultos","👁️ Ocultos"]].map(([v, l]) => (
+          <button key={v} onClick={() => setFilterStatus(v)} style={{
+            background: filterStatus === v ? C.surface : "transparent",
+            border: `1px solid ${filterStatus === v ? GOLD : C.border}`,
+            color: filterStatus === v ? GOLD : C.muted,
+            borderRadius: 8, padding: "5px 14px", fontSize: 12, fontWeight: 600,
+            cursor: "pointer",
+          }}>{l} ({v === "todos" ? products.length : v === "activos" ? products.filter(p => p.active).length : products.filter(p => !p.active).length})</button>
+        ))}
+
+        {/* Botón publicar todos los ocultos del filtro actual */}
+        {filtered.some(p => !p.active) && (
+          <Btn size="sm" variant="success" onClick={() => {
+            if (!confirm(`¿Publicar ${filtered.filter(p => !p.active).length} producto(s) oculto(s)?`)) return;
+            setProducts(ps => ps.map(p => {
+              const inFilter = filtered.find(f => f.id === p.id);
+              return inFilter && !p.active ? { ...p, active: true } : p;
+            }));
+          }}>
+            ✅ Publicar ocultos ({filtered.filter(p => !p.active).length})
+          </Btn>
+        )}
+        {filtered.some(p => p.active) && (
+          <Btn size="sm" variant="ghost" onClick={() => {
+            if (!confirm(`¿Ocultar ${filtered.filter(p => p.active).length} producto(s) publicado(s)?`)) return;
+            setProducts(ps => ps.map(p => {
+              const inFilter = filtered.find(f => f.id === p.id);
+              return inFilter && p.active ? { ...p, active: false } : p;
+            }));
+          }}>
+            👁️ Ocultar visibles ({filtered.filter(p => p.active).length})
+          </Btn>
+        )}
+
+        <span style={{ fontSize: 12, color: C.muted, marginLeft: 4 }}>
+          {filtered.length} producto{filtered.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
-        {products.map(p => (
+        {filtered.map(p => (
           <Card key={p.id} style={{ opacity: p.active ? 1 : 0.5, padding: 0, overflow: "hidden" }}>
             <div style={{ position: "relative", background: "#0a0a0a", height: 150 }}>
               <img src={p.image || "https://via.placeholder.com/400"} alt={p.name}
