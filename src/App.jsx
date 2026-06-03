@@ -1034,22 +1034,45 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
     setNewCatInput("");
   };
 
-  const save = () => {
+  const save = async () => {
     const p = {
       ...form,
-      priceContado: +form.priceContado,
-      priceCredito: +form.priceCredito,
-      stock: +form.stock,
+      priceContado: +form.priceContado || 0,
+      priceCredito: +form.priceCredito || 0,
+      stock: +form.stock || 0,
       offerHours: +form.offerHours || 0,
       offerStartTime: form.offer && form.offerHours > 0 ? Date.now() : null,
     };
-    if (modal === "new") setProducts(ps => [...ps, { ...p, id: Date.now() }]);
-    else setProducts(ps => ps.map(x => x.id === p.id ? p : x));
+    const id = modal === "new" ? String(Date.now()) : String(p.id);
+    const { id: _id, ...data } = { ...p, id };
+    try {
+      await setDoc(doc(db, "products", id), data);
+    } catch (e) {
+      console.error("Error guardando producto:", e);
+    }
+    if (modal === "new") setProducts(ps => [...ps, { ...data, id }]);
+    else setProducts(ps => ps.map(x => String(x.id) === id ? { ...data, id } : x));
     setModal(null);
   };
 
-  const del = (id) => { if (confirm("¿Eliminar?")) setProducts(ps => ps.filter(p => p.id !== id)); };
-  const toggle = (id) => setProducts(ps => ps.map(p => p.id === id ? { ...p, active: !p.active } : p));
+  const del = async (id) => {
+    if (!confirm("¿Eliminar este producto?")) return;
+    try {
+      await deleteDoc(doc(db, "products", String(id)));
+    } catch (e) {
+      console.error("Error eliminando producto:", e);
+    }
+    setProducts(ps => ps.filter(p => p.id !== id));
+  };
+  const toggle = async (id) => {
+    const p = products.find(x => x.id === id);
+    if (!p) return;
+    const newActive = !p.active;
+    try {
+      await setDoc(doc(db, "products", String(id)), { active: newActive }, { merge: true });
+    } catch (e) {}
+    setProducts(ps => ps.map(x => x.id === id ? { ...x, active: newActive } : x));
+  };
 
   const [filterCat, setFilterCat] = useState("Todos");
   const [filterStatus, setFilterStatus] = useState("todos");
