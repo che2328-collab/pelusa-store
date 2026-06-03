@@ -1054,6 +1054,8 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
   const [filterCat, setFilterCat] = useState("Todos");
   const [filterStatus, setFilterStatus] = useState("todos");
   const [search, setSearch] = useState("");
+
+  const filtered = products.filter(p => {
     const matchCat = filterCat === "Todos" || p.category === filterCat;
     const matchStatus = filterStatus === "todos"
       ? true : filterStatus === "activos" ? p.active : !p.active;
