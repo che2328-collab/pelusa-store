@@ -1495,6 +1495,47 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
   const statusColor = { pendiente_pago: C.yellow, activo: C.accent, pagado: C.green, cancelado: C.red };
   const totalCredito = orders.filter(o => o.type === "credito" && o.status === "activo").reduce((s, o) => s + o.saldoPendiente, 0);
 
+  // ── Detectar pedidos con pago próximo ──────────────────────
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+  const todayStr = today();
+  const in3Days = new Date(); in3Days.setDate(in3Days.getDate() + 3);
+  const in3Str = in3Days.toISOString().slice(0, 10);
+
+  const getNextAbonoDate = (order) => {
+    if (order.type !== "credito" || order.status !== "activo") return null;
+    const lastAbono = order.abonos?.slice(-1)[0];
+    if (!lastAbono) return order.date;
+    const d = new Date(lastAbono.date);
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const reminders = orders.filter(o => {
+    if (o.status === "pagado" || o.status === "cancelado") return false;
+    if (o.type === "contado" && o.payDueDate) {
+      return o.payDueDate >= todayStr && o.payDueDate <= in3Str;
+    }
+    if (o.type === "credito") {
+      const next = getNextAbonoDate(o);
+      return next && next >= todayStr && next <= in3Str;
+    }
+    return false;
+  });
+
+  const buildReminderMsg = (o) => {
+    const clientUser = users.find(u => u.id === o.userId);
+    const name = o.customerName?.split(" ")[0] || "amig@";
+    if (o.type === "contado") {
+      const dias = o.payDueDate === todayStr ? "hoy" : o.payDueDate === tomorrowStr ? "mañana" : `el ${o.payDueDate}`;
+      return `Hola ${name} 👋 Te escribimos de *Pelusa Store* 🛍️\n\nSolo un recordatorio amistoso: tu pago del pedido *${o.id}* es *${dias}* 😊\n\n💵 Monto: *${fmt(o.total)}*\n\nSi ya realizaste tu transferencia, manda tu comprobante y con gusto lo confirmamos. ¡Cualquier duda aquí estamos! 🙌`;
+    }
+    const abono = weekAbono(o.total, o.semanasTotal);
+    const nextDate = getNextAbonoDate(o);
+    const dias = nextDate === todayStr ? "hoy" : nextDate === tomorrowStr ? "mañana" : `el ${nextDate}`;
+    return `Hola ${name} 👋 Te saludamos de *Pelusa Store* 🛍️\n\nTe recordamos con mucho cariño que tu abono semanal del pedido *${o.id}* cae *${dias}* 😊\n\n💰 Abono: *${fmt(abono)}*\n📊 Saldo pendiente: *${fmt(o.saldoPendiente)}*\n\nSi tienes alguna duda o necesitas ajustar algo, con confianza nos dices. ¡Aquí estamos para apoyarte! 🤝`;
+  };
+
   return (
     <div>
       {totalCredito > 0 && (
@@ -1507,6 +1548,67 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
         <Btn onClick={() => setNewOrderModal(true)}>➕ Generar pedido para cliente</Btn>
       </div>
+
+      {/* ── PANEL DE RECORDATORIOS ── */}
+      {reminders.length > 0 && (
+        <div style={{ background: C.yellowDim, border: `1px solid ${C.yellow}44`, borderRadius: 14, padding: 18, marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: 20 }}>⏰</span>
+            <div>
+              <div style={{ fontFamily: "Cinzel", fontWeight: 700, color: C.yellow, fontSize: 15 }}>
+                Recordatorios de pago
+              </div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                {reminders.length} cliente{reminders.length !== 1 ? "s" : ""} con pago en los próximos 3 días
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {reminders.map(o => {
+              const clientUser = users.find(u => u.id === o.userId);
+              const clientPhone = o.customerPhone || clientUser?.phone || "";
+              const nextDate = o.type === "contado" ? o.payDueDate : getNextAbonoDate(o);
+              const isToday = nextDate === todayStr;
+              const isTomorrow = nextDate === tomorrowStr;
+              const urgency = isToday ? C.red : isTomorrow ? C.yellow : C.accent;
+              const label = isToday ? "🔴 HOY" : isTomorrow ? "🟡 Mañana" : `🟢 ${nextDate}`;
+              return (
+                <div key={o.id} style={{
+                  background: C.surface, border: `1px solid ${urgency}44`,
+                  borderRadius: 10, padding: "12px 16px",
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  flexWrap: "wrap", gap: 10,
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{o.customerName}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                      {o.id} · {o.type === "contado" ? "Contado" : `Abono ${fmt(weekAbono(o.total, o.semanasTotal))}`}
+                      {o.type === "credito" && <span style={{ color: C.muted }}> · Saldo: {fmt(o.saldoPendiente)}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ background: urgency + "22", color: urgency, border: `1px solid ${urgency}44`,
+                      borderRadius: 999, padding: "3px 12px", fontSize: 12, fontWeight: 700 }}>
+                      {label}
+                    </span>
+                    <a href={buildWALink(buildReminderMsg(o), clientPhone)} target="_blank" rel="noreferrer"
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        background: "#25D36622", border: "1px solid #25D36644", color: "#25D366",
+                        borderRadius: 8, padding: "7px 14px", fontSize: 12, fontWeight: 700, textDecoration: "none",
+                      }}>
+                      <svg width={13} height={13} viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                      </svg>
+                      Enviar recordatorio
+                    </a>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
         {[["todos", "Todos"], ["pendiente_pago", "Pago pendiente"], ["activo", "En crédito"], ["pagado", "Pagados"], ["cancelado", "Cancelados"]].map(([v, l]) => (
@@ -2100,6 +2202,23 @@ const AdminStats = ({ orders, products, users }) => {
   const pedidosCredito = orders.filter(o => o.type === "credito").length;
   const pedidosContado = orders.filter(o => o.type === "contado").length;
 
+  // Recordatorios próximos (hoy + mañana + 3 días)
+  const todayS = today();
+  const in3 = new Date(); in3.setDate(in3.getDate() + 3);
+  const in3S = in3.toISOString().slice(0, 10);
+  const proximosPagos = orders.filter(o => {
+    if (o.status === "pagado" || o.status === "cancelado") return false;
+    if (o.type === "contado" && o.payDueDate) return o.payDueDate >= todayS && o.payDueDate <= in3S;
+    if (o.type === "credito" && o.status === "activo") {
+      const last = o.abonos?.slice(-1)[0];
+      const d = last ? new Date(last.date) : new Date(o.date);
+      d.setDate(d.getDate() + 7);
+      const next = d.toISOString().slice(0, 10);
+      return next >= todayS && next <= in3S;
+    }
+    return false;
+  }).length;
+
   // Top clientes
   const topClientes = users.map(u => ({
     ...u,
@@ -2133,6 +2252,9 @@ const AdminStats = ({ orders, products, users }) => {
         <StatCard label="Clientes" value={users.length} color={C.yellow} icon="👥" />
         <StatCard label="Contado" value={pedidosContado} color={C.green} icon="💵" sub="pedidos" />
         <StatCard label="Crédito" value={pedidosCredito} color={C.accent} icon="📅" sub="pedidos" />
+        {proximosPagos > 0 && (
+          <StatCard label="Recordatorios" value={proximosPagos} color={C.yellow} icon="⏰" sub="pagos próximos 3 días" />
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
