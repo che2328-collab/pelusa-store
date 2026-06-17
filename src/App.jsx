@@ -639,13 +639,23 @@ const BankInfoDisplay = () => {
 // ═══════════════════════════════════════════════════════════════
 //  CARRITO + CHECKOUT
 // ═══════════════════════════════════════════════════════════════
-const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, onClose }) => {
-  const [step, setStep] = useState("cart"); // cart | confirm
+const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, products, onClose }) => {
+  const [step, setStep] = useState("cart");
   const [payType, setPayType] = useState("contado");
   const [weeks, setWeeks] = useState(5);
   const [note, setNote] = useState("");
 
-  const total = cart.reduce((s, i) => s + i.price * i.qty, 0);
+  // ── Recalcular precio según payType ──────────────────────────
+  const cartWithCorrectPrices = cart.map(i => {
+    const prod = products?.find(p => String(p.id) === String(i.productId));
+    if (!prod) return i;
+    const price = payType === "credito"
+      ? (prod.priceCredito || i.price)
+      : (prod.priceContado || i.price);
+    return { ...i, price, type: payType };
+  });
+
+  const total = cartWithCorrectPrices.reduce((s, i) => s + i.price * i.qty, 0);
   const abonoSem = payType === "credito" ? weekAbono(total, weeks) : total;
 
   const updateQty = (id, delta) => {
@@ -660,13 +670,13 @@ const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, onClose }) 
     const order = {
       id: ordId(), userId: user.id, customerName: user.name,
       customerPhone: user.phone || "",
-      items: cart.map(i => ({ ...i, type: payType })),
+      items: cartWithCorrectPrices.map(i => ({ ...i, type: payType })),
       total, type: payType,
       status: payType === "contado" ? "pendiente_pago" : "activo",
       date: today(),
       payDueDate: payType === "contado" ? payDueDate : null,
       abonos: [],
-      saldoPendiente: payType === "contado" ? total : total,
+      saldoPendiente: total,
       semanasTotal: payType === "contado" ? 1 : weeks,
       semanaActual: 0,
       note,
@@ -730,7 +740,7 @@ const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, onClose }) 
   if (step === "confirm") return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ background: C.accentDim, borderRadius: 10, padding: 16 }}>
-        {cart.map(i => (
+        {cartWithCorrectPrices.map(i => (
           <div key={i.productId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
             <span style={{ fontSize: 14 }}>
               {i.name}
@@ -934,8 +944,8 @@ const MyOrders = ({ orders, userId }) => {
             </div>
             {sel.items.map((i, idx) => (
               <div key={idx} style={{ display: "flex", justifyContent: "space-between",
-                padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
-                <span>
+                alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+                <span style={{ flex: 1, fontSize: 14 }}>
                   {i.name}
                   {i.selectedSize != null && (
                     <span style={{ color: GOLD, fontWeight: 700, fontSize: 12, marginLeft: 6 }}>
@@ -944,9 +954,32 @@ const MyOrders = ({ orders, userId }) => {
                   )}
                   {" "}× {i.qty}
                 </span>
-                <span style={{ fontFamily: "JetBrains Mono", color: C.accent }}>{fmt(i.price * i.qty)}</span>
+                {editingOrder ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 11, color: C.muted }}>$</span>
+                    <input type="number"
+                      value={editForm.itemPrices?.[idx] ?? i.price}
+                      onChange={e => setEditForm(f => ({
+                        ...f, itemPrices: { ...(f.itemPrices || {}), [idx]: +e.target.value }
+                      }))}
+                      style={{ width: 90, textAlign: "right", fontFamily: "JetBrains Mono", fontSize: 14 }}
+                    />
+                    <span style={{ fontSize: 11, color: C.muted }}>c/u</span>
+                  </div>
+                ) : (
+                  <span style={{ fontFamily: "JetBrains Mono", color: C.accent }}>{fmt(i.price * i.qty)}</span>
+                )}
               </div>
             ))}
+            {editingOrder && editForm.itemPrices && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700,
+                padding: "8px 0", fontSize: 15, color: GOLD }}>
+                <span>Nuevo total</span>
+                <span style={{ fontFamily: "JetBrains Mono" }}>
+                  {fmt(sel.items.reduce((s, i, idx) => s + (editForm.itemPrices?.[idx] ?? i.price) * i.qty, 0))}
+                </span>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 16 }}>
               <span>Total</span>
               <span style={{ fontFamily: "JetBrains Mono", color: C.accent }}>{fmt(sel.total)}</span>
@@ -1438,13 +1471,25 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
   };
 
   const saveOrderEdit = () => {
+    // Recalcular items con nuevos precios si los hay
+    const updatedItems = sel.items.map((i, idx) => ({
+      ...i,
+      price: editForm.itemPrices?.[idx] ?? i.price,
+      type: editForm.type || i.type,
+    }));
+    const newTotal = updatedItems.reduce((s, i) => s + i.price * i.qty, 0);
+    const paidSoFar = (sel.abonos || []).reduce((s, a) => s + a.amount, 0);
+    const newSaldo = Math.max(0, newTotal - paidSoFar);
+
     const updated = {
-      ...sel, ...editForm,
-      type: editForm.type,
-      status: editForm.type === "contado" && sel.type === "credito" ? "pendiente_pago"
-        : editForm.type === "credito" && sel.type === "contado" ? "activo"
-        : sel.status,
-      saldoPendiente: editForm.type === "contado" && sel.type === "credito" ? sel.total : sel.saldoPendiente,
+      ...sel,
+      items: updatedItems,
+      total: newTotal,
+      saldoPendiente: newSaldo,
+      status: newSaldo === 0 ? "pagado"
+        : editForm.type === "contado" ? "pendiente_pago"
+        : "activo",
+      type: editForm.type || sel.type,
       semanasTotal: +editForm.semanasTotal || sel.semanasTotal,
       payDueDate: editForm.payDueDate || sel.payDueDate || null,
     };
@@ -1803,10 +1848,13 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
             {/* ── EDITAR PEDIDO ── */}
             {!editingOrder ? (
               <Btn size="sm" variant="ghost" onClick={() => {
+                const initialPrices = {};
+                sel.items.forEach((i, idx) => { initialPrices[idx] = i.price; });
                 setEditForm({
                   type: sel.type,
                   payDueDate: sel.payDueDate || "",
                   semanasTotal: sel.semanasTotal || 5,
+                  itemPrices: initialPrices,
                 });
                 setEditingOrder(true);
               }}>✏️ Modificar pedido</Btn>
@@ -2597,7 +2645,7 @@ export default function App() {
           <Cart
             cart={cart} setCart={setCart}
             user={currentUser} orders={orders} setOrders={setOrdersFirebase}
-            setProducts={setProducts}
+            setProducts={setProducts} products={products}
             onClose={() => { setCartOpen(false); setTab("orders"); }}
           />
         </Modal>
