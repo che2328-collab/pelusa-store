@@ -107,7 +107,13 @@ a{color:inherit;text-decoration:none;}
 const uid = () => "u" + Date.now();
 const ordId = () => "ORD-" + String(Date.now()).slice(-5);
 const fmt = n => "$" + Number(n).toLocaleString("es-MX");
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 const weekAbono = (total, weeks) => Math.ceil(total / weeks);
 
 // ═══════════════════════════════════════════════════════════════
@@ -434,7 +440,7 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
                   fontSize: 11, fontWeight: 800 }}>{inCart}</div>
               )}
               <div style={{ background: "#0a0a0a", height: 180, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                <img src={p.image} alt={p.name}
+                <img src={(p.images?.filter(Boolean)[0]) || p.image} alt={p.name}
                   style={{ width: "100%", height: 180, objectFit: "contain", cursor: "pointer", display: "block" }}
                   onClick={() => setDetail({ ...p, priceMode })} />
               </div>
@@ -522,22 +528,37 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
 
       {/* Modal detalle */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name} wide>
-        {detail && (
+        {detail && (() => {
+          const imgs = (detail.images?.filter(Boolean).length > 0 ? detail.images.filter(Boolean) : [detail.image]).filter(Boolean);
+          const [activeImg, setActiveImg] = useState(0);
+          return (
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {/* Imagen completa arriba */}
+            {/* Imagen principal */}
             <div style={{
               width: "100%", borderRadius: 14, overflow: "hidden",
               background: "#0a0a0a",
               display: "flex", alignItems: "center", justifyContent: "center",
               minHeight: 240, maxHeight: 320,
             }}>
-              <img src={detail.image} alt={detail.name} style={{
-                width: "100%", height: "100%",
-                objectFit: "contain",
-                maxHeight: 320,
-                display: "block",
+              <img src={imgs[activeImg] || imgs[0]} alt={detail.name} style={{
+                width: "100%", height: "100%", objectFit: "contain", maxHeight: 320, display: "block",
               }} />
             </div>
+            {/* Miniaturas si hay más de 1 */}
+            {imgs.length > 1 && (
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+                {imgs.map((url, idx) => (
+                  <div key={idx} onClick={() => setActiveImg(idx)} style={{
+                    width: 64, height: 64, flexShrink: 0,
+                    border: `2px solid ${activeImg === idx ? GOLD : C.border}`,
+                    borderRadius: 8, overflow: "hidden", cursor: "pointer",
+                    background: "#0a0a0a",
+                  }}>
+                    <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Info abajo */}
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -607,7 +628,8 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
               </Btn>
             </div>
           </div>
-        )}
+          );
+        })()}
       </Modal>
     </div>
   );
@@ -1190,7 +1212,7 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
         {filtered.map(p => (
           <Card key={p.id} style={{ opacity: p.active ? 1 : 0.5, padding: 0, overflow: "hidden" }}>
             <div style={{ position: "relative", background: "#0a0a0a", height: 150 }}>
-              <img src={p.image || "https://via.placeholder.com/400"} alt={p.name}
+              <img src={(p.images?.filter(Boolean)[0]) || p.image || "https://via.placeholder.com/400"} alt={p.name}
                 style={{ width: "100%", height: 150, objectFit: "contain", display: "block" }} />
               {p.offer && <div style={{ position: "absolute", top: 8, left: 8, background: C.red, color: "#fff",
                 borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>OFERTA</div>}
@@ -1413,10 +1435,51 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
           </Field>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <Field label="URL Imagen"><input value={form.image || ""} onChange={e => set("image", e.target.value)} placeholder="https://..." /></Field>
           <Field label="Descripción"><textarea rows={3} value={form.description || ""} onChange={e => set("description", e.target.value)} style={{ resize: "vertical" }} /></Field>
         </div>
-        {form.image && <img src={form.image} alt="preview" style={{ width: "100%", height: 160, objectFit: "cover", borderRadius: 10, marginTop: 12 }} />}
+
+        {/* Multi-imagen */}
+        <div>
+          <div style={{ fontSize: 11, color: C.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10, fontWeight: 600 }}>
+            🖼️ Fotos del producto (agrega hasta 6 ángulos)
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {(form.images || [form.image || ""]).map((url, idx) => (
+              <div key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ fontSize: 12, color: C.muted, minWidth: 20 }}>#{idx + 1}</div>
+                <input
+                  value={url}
+                  onChange={e => {
+                    const imgs = [...(form.images || [form.image || ""])];
+                    imgs[idx] = e.target.value;
+                    set("images", imgs);
+                    if (idx === 0) set("image", e.target.value);
+                  }}
+                  placeholder="https://... (URL de la imagen)"
+                  style={{ flex: 1 }}
+                />
+                {url && (
+                  <img src={url} alt="" style={{ width: 44, height: 44, objectFit: "contain",
+                    borderRadius: 6, background: "#0a0a0a", border: `1px solid ${C.border}` }} />
+                )}
+                {(form.images || []).length > 1 && (
+                  <button onClick={() => {
+                    const imgs = (form.images || []).filter((_, i) => i !== idx);
+                    set("images", imgs);
+                    if (idx === 0) set("image", imgs[0] || "");
+                  }} style={{ background: "none", border: "none", color: C.red, cursor: "pointer", fontSize: 16 }}>✕</button>
+                )}
+              </div>
+            ))}
+            {(form.images || [form.image || ""]).length < 6 && (
+              <Btn size="sm" variant="ghost" onClick={() => {
+                const imgs = [...(form.images || [form.image || ""])];
+                imgs.push("");
+                set("images", imgs);
+              }}>＋ Agregar otra foto</Btn>
+            )}
+          </div>
+        </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
           <Btn variant="ghost" onClick={() => setModal(null)}>Cancelar</Btn>
           <Btn onClick={save}>💾 Guardar</Btn>
