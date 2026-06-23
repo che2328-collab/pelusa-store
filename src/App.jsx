@@ -689,6 +689,9 @@ const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, products, o
   const [confirmedOrder, setConfirmedOrder] = useState(null);
 
   const confirm = () => {
+    // Tomar firstPayDate y config de interés del primer producto a crédito
+    const creditItems = cartWithCorrectPrices.filter(i => i.payMode !== "contado");
+    const firstProd = products?.find(p => String(p.id) === String(creditItems[0]?.productId));
     const order = {
       id: ordId(), userId: user.id, customerName: user.name,
       customerPhone: user.phone || "",
@@ -697,6 +700,9 @@ const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, products, o
       status: payType === "contado" ? "pendiente_pago" : "activo",
       date: today(),
       payDueDate: payType === "contado" ? payDueDate : null,
+      firstPayDate: payType === "credito" ? (firstProd?.firstPayDate || null) : null,
+      lateFeEnabled: payType === "credito" ? (firstProd?.lateFeEnabled || false) : false,
+      lateFeeDays: payType === "credito" ? (firstProd?.lateFeeDays || 1) : 0,
       abonos: [],
       saldoPendiente: total,
       semanasTotal: payType === "contado" ? 1 : weeks,
@@ -834,6 +840,30 @@ const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, products, o
         </Field>
       )}
 
+      {payType === "credito" && (() => {
+        const creditItems = cartWithCorrectPrices.filter(i => (i.payMode || "ambos") !== "contado");
+        const firstProd = products?.find(p => String(p.id) === String(creditItems[0]?.productId));
+        const firstDate = firstProd?.firstPayDate;
+        const hasLateFee = firstProd?.lateFeEnabled;
+        const lateFeeDays = firstProd?.lateFeeDays || 1;
+        if (!firstDate && !hasLateFee) return null;
+        return (
+          <div style={{ background: GOLD_DIM, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: 14, fontSize: 13 }}>
+            {firstDate && (
+              <div style={{ marginBottom: hasLateFee ? 8 : 0 }}>
+                📅 <strong>Fecha de tu primer abono:</strong>{" "}
+                <span style={{ color: GOLD, fontWeight: 700 }}>{firstDate}</span>
+              </div>
+            )}
+            {hasLateFee && (
+              <div style={{ color: C.muted, fontSize: 12 }}>
+                ⚠️ Se aplicará un <strong style={{ color: C.yellow }}>5% de interés</strong> sobre el abono si el pago se realiza con más de {lateFeeDays} día{lateFeeDays !== 1 ? "s" : ""} de retraso.
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {(payType === "credito" || payType === "contado") && (
         <div style={{ background: C.accentDim, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: 14 }}>
           <div style={{ fontSize: 12, color: GOLD, fontWeight: 700, marginBottom: 6 }}>🏦 Datos para transferencia / abono</div>
@@ -933,6 +963,16 @@ const MyOrders = ({ orders, userId }) => {
           </div>
           {o.type === "credito" && (
             <CreditBar paid={o.total - o.saldoPendiente} total={o.total} />
+          )}
+          {o.type === "credito" && o.firstPayDate && o.status === "activo" && o.semanaActual === 0 && (
+            <div style={{ fontSize: 13, color: GOLD, marginTop: 8, fontWeight: 600 }}>
+              📅 Fecha de tu primer abono: <strong>{o.firstPayDate}</strong>
+            </div>
+          )}
+          {o.type === "credito" && o.lateFeEnabled && o.status === "activo" && (
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+              ⚠️ Se aplica 5% de interés por pago tardío (tolerancia: {o.lateFeeDays || 1} día{o.lateFeeDays !== 1 ? "s" : ""})
+            </div>
           )}
           {o.type === "contado" && o.payDueDate && o.status === "pendiente_pago" && (
             <div style={{
@@ -1098,6 +1138,9 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
       stock: +form.stock || 0,
       offerHours: +form.offerHours || 0,
       offerStartTime: form.offer && form.offerHours > 0 ? Date.now() : null,
+      firstPayDate: form.firstPayDate || null,
+      lateFeEnabled: !!form.lateFeEnabled,
+      lateFeeDays: +form.lateFeeDays || 1,
     };
     const id = modal === "new" ? String(Date.now()) : String(p.id);
     const { id: _id, ...data } = { ...p, id };
@@ -1328,6 +1371,33 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
                   {[2,3,4,5,6,8,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
                 </select>
               </Field>
+              <Field label="📅 Fecha del primer abono">
+                <input type="date" value={form.firstPayDate || ""} onChange={e => set("firstPayDate", e.target.value)}
+                  min={today()} />
+              </Field>
+              <div style={{ gridColumn: "1/-1" }}>
+                <div style={{ background: GOLD_DIM, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: GOLD, marginBottom: 10 }}>⚠️ Interés por pago tardío</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.text }}>
+                      <input type="checkbox" checked={!!form.lateFeEnabled} onChange={e => set("lateFeEnabled", e.target.checked)} style={{ width: "auto" }} />
+                      Aplicar 5% de interés por atraso
+                    </label>
+                    {form.lateFeEnabled && (
+                      <Field label="Días de tolerancia antes de aplicar">
+                        <select value={form.lateFeeDays || 1} onChange={e => set("lateFeeDays", +e.target.value)}>
+                          {[0,1,2,3,5,7].map(d => <option key={d} value={d}>{d === 0 ? "Sin tolerancia" : `${d} día${d > 1 ? "s" : ""}`}</option>)}
+                        </select>
+                      </Field>
+                    )}
+                  </div>
+                  {form.lateFeEnabled && (
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
+                      💡 Si el cliente no paga en la fecha acordada + días de tolerancia, se aplicará automáticamente un 5% extra sobre el abono.
+                    </div>
+                  )}
+                </div>
+              </div>
             </>
           )}
           <Field label="Stock"><input type="number" value={form.stock || ""} onChange={e => set("stock", e.target.value)} /></Field>
@@ -1866,7 +1936,27 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                         const clientUser = users.find(u => u.id === sel.userId);
                         const clientPhone = sel.customerPhone || clientUser?.phone || "";
                         const hasPhone = clientPhone.replace(/\D/g, "").length >= 10;
-                        const msgRecordatorio = `Hola ${sel.customerName} 👋\n\nTe recordamos que tienes un abono pendiente de tu pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n💰 Abono semanal: $${sugerido.toLocaleString()} MXN\n📊 Saldo pendiente: $${sel.saldoPendiente.toLocaleString()} MXN\n\n¡Gracias por tu confianza! 🙏`;
+
+                        // ── Calcular si hay interés por atraso ──
+                        const lastAbono = sel.abonos?.slice(-1)[0];
+                        const nextAbonoDate = (() => {
+                          if (sel.firstPayDate && sel.semanaActual === 0) return sel.firstPayDate;
+                          const base = lastAbono ? new Date(lastAbono.date) : new Date(sel.date);
+                          base.setDate(base.getDate() + 7);
+                          return base.toISOString().slice(0, 10);
+                        })();
+                        const diasVencido = (() => {
+                          if (!nextAbonoDate) return 0;
+                          const diff = new Date(today()) - new Date(nextAbonoDate);
+                          return Math.floor(diff / 86400000);
+                        })();
+                        const tolerance = sel.lateFeeDays || 0;
+                        const hayAtraso = sel.lateFeEnabled && diasVencido > tolerance;
+                        const abonoConInteres = hayAtraso ? Math.ceil(sugerido * 1.05) : sugerido;
+                        const interes = abonoConInteres - sugerido;
+
+                        const msgRecordatorio = `Hola ${sel.customerName} 👋\n\nTe recordamos que tienes un abono pendiente de tu pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n💰 Abono semanal: $${sugerido.toLocaleString()} MXN\n📊 Saldo pendiente: $${sel.saldoPendiente.toLocaleString()} MXN\n📅 Fecha esperada: ${nextAbonoDate || "-"}\n\n¡Gracias por tu confianza! 🙏`;
+                        const msgPenalizacion = hayAtraso ? `Hola ${sel.customerName} 👋\n\nTe informamos que tu abono del pedido *${sel.id}* en *Pelusa Store* tiene *${diasVencido} día${diasVencido !== 1 ? "s" : ""} de retraso* ⚠️\n\nPor política de crédito, se ha aplicado un interés del *5%*:\n\n💰 Abono original: $${sugerido.toLocaleString()} MXN\n➕ Interés (5%): $${interes.toLocaleString()} MXN\n💵 Total a pagar: *$${abonoConInteres.toLocaleString()} MXN*\n\nTe pedimos regularizar tu situación a la brevedad. Recuerda que tu crédito vale mucho. 🙏` : null;
                         const msgConfirmacion = abonoAmt
                           ? `Hola ${sel.customerName} ✅\n\nHemos registrado tu abono de *$${Number(abonoAmt).toLocaleString()} MXN* para el pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n📊 Nuevo saldo pendiente: *$${Math.max(0, sel.saldoPendiente - +abonoAmt).toLocaleString()} MXN*\n\n¡Muchas gracias por tu pago! 🙌`
                           : null;
@@ -1878,6 +1968,38 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                                 ⚠️ Este cliente no tiene teléfono registrado
                               </div>
                             )}
+
+                            {/* Info fecha próximo abono */}
+                            <div style={{ background: C.bg, borderRadius: 10, padding: "10px 14px", fontSize: 13 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6 }}>
+                                <span style={{ color: C.muted }}>📅 Próximo abono: <strong style={{ color: C.text }}>{nextAbonoDate || "-"}</strong></span>
+                                <span style={{ color: C.muted }}>💰 Abono: <strong style={{ color: C.accent }}>{fmt(sugerido)}</strong></span>
+                              </div>
+                              {hayAtraso && (
+                                <div style={{ marginTop: 8, background: C.redDim, border: `1px solid ${C.red}44`,
+                                  borderRadius: 8, padding: "8px 12px" }}>
+                                  <div style={{ color: C.red, fontWeight: 700, fontSize: 13 }}>
+                                    ⚠️ Atraso de {diasVencido} día{diasVencido !== 1 ? "s" : ""} — Interés del 5% aplicado
+                                  </div>
+                                  <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
+                                    Abono normal: {fmt(sugerido)} + Interés: {fmt(interes)} = <strong style={{ color: C.yellow }}>{fmt(abonoConInteres)}</strong>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Botón aviso penalización */}
+                            {hayAtraso && msgPenalizacion && (
+                              <a href={buildWALink(msgPenalizacion, clientPhone)} target="_blank" rel="noreferrer" style={{
+                                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                                background: C.redDim, border: `1px solid ${C.red}44`, color: C.red,
+                                borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 700,
+                                textDecoration: "none",
+                              }}>
+                                ⚠️ Avisar penalización por atraso
+                              </a>
+                            )}
+
                             <a href={buildWALink(msgRecordatorio, clientPhone)} target="_blank" rel="noreferrer" style={{
                               display: "inline-flex", alignItems: "center", gap: 6,
                               background: "#25D36622", border: "1px solid #25D36644", color: "#25D366",
