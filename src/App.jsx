@@ -116,6 +116,21 @@ const today = () => {
 };
 const weekAbono = (total, weeks) => Math.ceil(total / weeks);
 
+// Devuelve el próximo sábado desde una fecha dada (o hoy si ya es sábado)
+const nextSaturday = (fromDateStr) => {
+  const d = fromDateStr ? new Date(fromDateStr + "T12:00:00") : new Date();
+  const day = d.getDay(); // 0=dom, 6=sab
+  const daysUntilSat = day === 6 ? 7 : (6 - day); // si ya es sábado, el siguiente
+  d.setDate(d.getDate() + daysUntilSat);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+};
+
+// Devuelve firstPayDate válido: si ya pasó, calcula el siguiente sábado
+const validFirstPayDate = (date) => {
+  if (!date) return nextSaturday();
+  return date >= today() ? date : nextSaturday();
+};
+
 // ═══════════════════════════════════════════════════════════════
 //  COMPONENTES BASE
 // ═══════════════════════════════════════════════════════════════
@@ -700,7 +715,7 @@ const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, products, o
       status: payType === "contado" ? "pendiente_pago" : "activo",
       date: today(),
       payDueDate: payType === "contado" ? payDueDate : null,
-      firstPayDate: payType === "credito" ? (firstProd?.firstPayDate || null) : null,
+      firstPayDate: payType === "credito" ? validFirstPayDate(firstProd?.firstPayDate || null) : null,
       lateFeEnabled: payType === "credito" ? (firstProd?.lateFeEnabled || false) : false,
       lateFeeDays: payType === "credito" ? (firstProd?.lateFeeDays || 1) : 0,
       abonos: [],
@@ -826,7 +841,7 @@ const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, products, o
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {(() => {
               const maxW = Math.max(...cart.map(i => i.maxWeeks || 8));
-              const opts = [2,3,4,5,6,8,10,12].filter(w => w <= maxW);
+              const opts = [2,3,4,5,6,7,8,9,10,12].filter(w => w <= maxW);
               return opts.map(w => (
                 <button key={w} onClick={() => setWeeks(w)} style={{
                   flex: 1, background: weeks === w ? C.accent : C.surface,
@@ -1368,7 +1383,7 @@ const AdminProducts = ({ products, setProducts, categories, setCategories }) => 
               </Field>
               <Field label="Máximo de semanas a crédito">
                 <select value={form.maxWeeks || 8} onChange={e => set("maxWeeks", +e.target.value)}>
-                  {[2,3,4,5,6,8,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
+                  {[2,3,4,5,6,7,8,9,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
                 </select>
               </Field>
               <Field label="📅 Fecha del primer abono">
@@ -1577,34 +1592,36 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
     filter === "credito" ? o.type === "credito" && o.status === "activo" : o.status === filter
   );
 
-  const addAbono = (orderId) => {
+  const addAbono = async (orderId) => {
     const amt = +abonoAmt;
     if (!amt || amt <= 0) return;
-    setOrders(os => os.map(o => {
-      if (o.id !== orderId) return o;
-      const newSaldo = Math.max(0, o.saldoPendiente - amt);
-      return {
-        ...o, saldoPendiente: newSaldo,
-        status: newSaldo === 0 ? "pagado" : "activo",
-        semanaActual: o.semanaActual + 1,
-        abonos: [...o.abonos, { date: today(), amount: amt, note: abonoNote || `Abono semana ${o.semanaActual + 1}` }],
-      };
-    }));
-    setSel(prev => {
-      if (!prev || prev.id !== orderId) return prev;
-      const newSaldo = Math.max(0, prev.saldoPendiente - amt);
-      return {
-        ...prev, saldoPendiente: newSaldo,
-        status: newSaldo === 0 ? "pagado" : "activo",
-        semanaActual: prev.semanaActual + 1,
-        abonos: [...prev.abonos, { date: today(), amount: amt, note: abonoNote || `Abono semana ${prev.semanaActual + 1}` }],
-      };
-    });
+    const order = orders.find(o => o.id === orderId);
+    if (!order) return;
+    const newSaldo = Math.max(0, order.saldoPendiente - amt);
+    const newStatus = newSaldo === 0 ? "pagado" : "activo";
+    const newAbonos = [...(order.abonos || []), {
+      date: today(), amount: amt,
+      note: abonoNote || `Abono semana ${(order.semanaActual || 0) + 1}`,
+    }];
+    const updated = {
+      ...order,
+      saldoPendiente: newSaldo,
+      status: newStatus,
+      semanaActual: (order.semanaActual || 0) + 1,
+      abonos: newAbonos,
+    };
+    // Sync Firestore primero
+    try {
+      await setDoc(doc(db, "orders", String(orderId)), updated);
+    } catch (e) {
+      console.error("Error sincronizando abono:", e);
+    }
+    setOrders(os => os.map(o => o.id === orderId ? updated : o));
+    setSel(updated);
     setAbonoAmt(""); setAbonoNote("");
   };
 
-  const saveOrderEdit = () => {
-    // Recalcular items con nuevos precios si los hay
+  const saveOrderEdit = async () => {
     const updatedItems = sel.items.map((i, idx) => ({
       ...i,
       price: editForm.itemPrices?.[idx] ?? i.price,
@@ -1613,7 +1630,6 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
     const newTotal = updatedItems.reduce((s, i) => s + i.price * i.qty, 0);
     const paidSoFar = (sel.abonos || []).reduce((s, a) => s + a.amount, 0);
     const newSaldo = Math.max(0, newTotal - paidSoFar);
-
     const updated = {
       ...sel,
       items: updatedItems,
@@ -1626,6 +1642,9 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
       semanasTotal: +editForm.semanasTotal || sel.semanasTotal,
       payDueDate: editForm.payDueDate || sel.payDueDate || null,
     };
+    try {
+      await setDoc(doc(db, "orders", String(sel.id)), updated);
+    } catch (e) {}
     setOrders(os => os.map(o => o.id === sel.id ? updated : o));
     setSel(updated);
     setEditingOrder(false);
@@ -1682,11 +1701,10 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
 
   const getNextAbonoDate = (order) => {
     if (order.type !== "credito" || order.status !== "activo") return null;
+    if (order.firstPayDate && order.semanaActual === 0) return validFirstPayDate(order.firstPayDate);
     const lastAbono = order.abonos?.slice(-1)[0];
-    if (!lastAbono) return order.date;
-    const d = new Date(lastAbono.date);
-    d.setDate(d.getDate() + 7);
-    return d.toISOString().slice(0, 10);
+    const lastDate = lastAbono?.date || order.date;
+    return nextSaturday(lastDate);
   };
 
   const reminders = orders.filter(o => {
@@ -1875,7 +1893,7 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                     </div>
                   )}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <Btn variant="success" onClick={() => {
+                    <Btn variant="success" onClick={async () => {
                       if (!confirm(`¿Registrar pago completo de ${fmt(sel.total)} para ${sel.customerName}?`)) return;
                       const updated = {
                         ...sel,
@@ -1883,6 +1901,9 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                         saldoPendiente: 0,
                         abonos: [...(sel.abonos || []), { date: today(), amount: sel.total, note: "Pago contado completo" }],
                       };
+                      try {
+                        await setDoc(doc(db, "orders", String(sel.id)), updated);
+                      } catch (e) {}
                       setOrders(os => os.map(o => o.id === sel.id ? updated : o));
                       setSel(updated);
                     }}>
@@ -1940,10 +1961,9 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                         // ── Calcular si hay interés por atraso ──
                         const lastAbono = sel.abonos?.slice(-1)[0];
                         const nextAbonoDate = (() => {
-                          if (sel.firstPayDate && sel.semanaActual === 0) return sel.firstPayDate;
-                          const base = lastAbono ? new Date(lastAbono.date) : new Date(sel.date);
-                          base.setDate(base.getDate() + 7);
-                          return base.toISOString().slice(0, 10);
+                          if (sel.firstPayDate && sel.semanaActual === 0) return validFirstPayDate(sel.firstPayDate);
+                          const lastDate = lastAbono?.date || sel.date;
+                          return nextSaturday(lastDate);
                         })();
                         const diasVencido = (() => {
                           if (!nextAbonoDate) return 0;
@@ -2067,7 +2087,7 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                   {editForm.type === "credito" && (
                     <Field label="Semanas para pagar">
                       <select value={editForm.semanasTotal || 5} onChange={e => setEditForm(f => ({ ...f, semanasTotal: +e.target.value }))}>
-                        {[2,3,4,5,6,8,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
+                        {[2,3,4,5,6,7,8,9,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
                       </select>
                     </Field>
                   )}
@@ -2145,7 +2165,7 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
           {newOrder.type === "credito" && (
             <Field label="Semanas para pagar">
               <select value={newOrder.semanasTotal} onChange={e => setNewOrder(o => ({ ...o, semanasTotal: +e.target.value }))}>
-                {[2,3,4,5,6,8,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
+                {[2,3,4,5,6,7,8,9,10,12].map(w => <option key={w} value={w}>{w} semanas</option>)}
               </select>
             </Field>
           )}
