@@ -361,6 +361,110 @@ const AuthScreen = ({ onLogin, onRegister, users, setUsers, blockedError }) => {
   );
 };
 
+// ─── DETALLE PRODUCTO (componente separado para usar useState correctamente) ──
+const ProductDetail = ({ detail, selectedSizes, setSelectedSizes, onAddToCart, onClose }) => {
+  const [activeImg, setActiveImg] = useState(0);
+  const imgs = (detail.images?.filter(Boolean).length > 0
+    ? detail.images.filter(Boolean)
+    : [detail.image]).filter(Boolean);
+  const selKey = `size_modal_${detail.id}`;
+  const selectedSize = selectedSizes[selKey];
+  const isNumeric = detail.sizes?.length > 0 && typeof detail.sizes[0] === "number";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      {/* Imagen principal */}
+      <div style={{ width: "100%", borderRadius: 14, overflow: "hidden", background: "#0a0a0a",
+        display: "flex", alignItems: "center", justifyContent: "center", minHeight: 240, maxHeight: 320 }}>
+        <img src={imgs[activeImg] || imgs[0]} alt={detail.name} style={{
+          width: "100%", height: "100%", objectFit: "contain", maxHeight: 320, display: "block",
+        }} />
+      </div>
+
+      {/* Miniaturas */}
+      {imgs.length > 1 && (
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+          {imgs.map((url, idx) => (
+            <div key={idx} onClick={() => setActiveImg(idx)} style={{
+              width: 64, height: 64, flexShrink: 0,
+              border: `2px solid ${activeImg === idx ? GOLD : C.border}`,
+              borderRadius: 8, overflow: "hidden", cursor: "pointer", background: "#0a0a0a",
+            }}>
+              <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Info */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Chip color={C.blue}>{detail.category}</Chip>
+        {detail.description && <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.7 }}>{detail.description}</p>}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {(detail.payMode || "ambos") !== "credito" && (
+            <div style={{ background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Precio Contado</div>
+              <div style={{ fontFamily: "JetBrains Mono", fontSize: 22, fontWeight: 700, color: C.green }}>{fmt(detail.priceContado)}</div>
+            </div>
+          )}
+          {(detail.payMode || "ambos") !== "contado" && (
+            <div style={{ background: GOLD_DIM, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Crédito · máx {detail.maxWeeks || 5} sem.
+              </div>
+              <div style={{ fontFamily: "JetBrains Mono", fontSize: 22, fontWeight: 700, color: C.accent }}>{fmt(detail.priceCredito)}</div>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>≈ {fmt(weekAbono(detail.priceCredito, detail.maxWeeks || 5))}/sem</div>
+            </div>
+          )}
+        </div>
+
+        {/* Tallas */}
+        {detail.sizes?.length > 0 && (
+          <div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              {isNumeric ? "👟" : "👕"} Selecciona tu talla
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {detail.sizes.map(s => {
+                const label = isNumeric
+                  ? (Number.isInteger(Number(s)) ? Number(s) : Number(s).toFixed(1))
+                  : s;
+                const isSel = String(selectedSize) === String(s);
+                return (
+                  <button key={s} onClick={() => setSelectedSizes(sv => ({ ...sv, [selKey]: s }))} style={{
+                    background: isSel ? GOLD : "#0a0a0a",
+                    border: `1px solid ${isSel ? GOLD : C.border}`,
+                    color: isSel ? "#000" : C.muted,
+                    borderRadius: 8, padding: "7px 12px",
+                    fontSize: 13, fontWeight: isSel ? 700 : 400,
+                    cursor: "pointer", minWidth: isNumeric ? 46 : 40,
+                    transition: "all 0.15s",
+                  }}>{label}</button>
+                );
+              })}
+            </div>
+            {!selectedSize && (
+              <div style={{ fontSize: 11, color: C.yellow, marginTop: 6 }}>⚠️ Selecciona una talla para continuar</div>
+            )}
+          </div>
+        )}
+
+        <Btn full
+          disabled={detail.sizes?.length > 0 && !selectedSize}
+          onClick={() => {
+            onAddToCart({ ...detail, selectedSize }, detail.priceMode || "contado");
+            onClose();
+          }}>
+          {detail.sizes?.length > 0 && !selectedSize
+            ? `${isNumeric ? "👟" : "👕"} Elige una talla`
+            : "🛒 Agregar al carrito"}
+        </Btn>
+      </div>
+    </div>
+  );
+};
+
 // ═══════════════════════════════════════════════════════════════
 //  CATÁLOGO (vista cliente)
 // ═══════════════════════════════════════════════════════════════
@@ -543,108 +647,15 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
 
       {/* Modal detalle */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name} wide>
-        {detail && (() => {
-          const imgs = (detail.images?.filter(Boolean).length > 0 ? detail.images.filter(Boolean) : [detail.image]).filter(Boolean);
-          const [activeImg, setActiveImg] = useState(0);
-          return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {/* Imagen principal */}
-            <div style={{
-              width: "100%", borderRadius: 14, overflow: "hidden",
-              background: "#0a0a0a",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              minHeight: 240, maxHeight: 320,
-            }}>
-              <img src={imgs[activeImg] || imgs[0]} alt={detail.name} style={{
-                width: "100%", height: "100%", objectFit: "contain", maxHeight: 320, display: "block",
-              }} />
-            </div>
-            {/* Miniaturas si hay más de 1 */}
-            {imgs.length > 1 && (
-              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-                {imgs.map((url, idx) => (
-                  <div key={idx} onClick={() => setActiveImg(idx)} style={{
-                    width: 64, height: 64, flexShrink: 0,
-                    border: `2px solid ${activeImg === idx ? GOLD : C.border}`,
-                    borderRadius: 8, overflow: "hidden", cursor: "pointer",
-                    background: "#0a0a0a",
-                  }}>
-                    <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Info abajo */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <Chip color={C.blue}>{detail.category}</Chip>
-              <p style={{ fontSize: 14, color: C.muted, lineHeight: 1.7 }}>{detail.description}</p>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div style={{ background: C.bg, borderRadius: 10, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>Precio Contado</div>
-                  <div style={{ fontFamily: "JetBrains Mono", fontSize: 22, fontWeight: 700, color: C.green }}>{fmt(detail.priceContado)}</div>
-                </div>
-                <div style={{ background: GOLD_DIM, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: "12px 14px" }}>
-                  <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                    Crédito · máx {detail.maxWeeks || 5} sem.
-                  </div>
-                  <div style={{ fontFamily: "JetBrains Mono", fontSize: 22, fontWeight: 700, color: C.accent }}>{fmt(detail.priceCredito)}</div>
-                  <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>≈ {fmt(weekAbono(detail.priceCredito, detail.maxWeeks || 5))}/sem</div>
-                </div>
-              </div>
-
-              {/* Tallas si aplica */}
-              {detail.sizes?.length > 0 && (() => {
-                const selKey = `size_modal_${detail.id}`;
-                const selectedSize = selectedSizes[selKey];
-                const isNumeric = typeof detail.sizes[0] === "number";
-                return (
-                  <div>
-                    <div style={{ fontSize: 11, color: C.muted, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      {isNumeric ? "👟" : "👕"} Selecciona tu talla
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {detail.sizes.map(s => {
-                        const label = isNumeric
-                          ? (Number.isInteger(Number(s)) ? Number(s) : Number(s).toFixed(1))
-                          : s;
-                        const isSelected = String(selectedSize) === String(s);
-                        return (
-                          <button key={s} onClick={() => setSelectedSizes(sv => ({ ...sv, [selKey]: s }))} style={{
-                            background: isSelected ? GOLD : "#0a0a0a",
-                            border: `1px solid ${isSelected ? GOLD : C.border}`,
-                            color: isSelected ? "#000" : C.muted,
-                            borderRadius: 8, padding: "7px 12px",
-                            fontSize: 13, fontWeight: isSelected ? 700 : 400,
-                            cursor: "pointer", minWidth: isNumeric ? 46 : 40,
-                            transition: "all 0.15s",
-                          }}>{label}</button>
-                        );
-                      })}
-                    </div>
-                    {!selectedSize && (
-                      <div style={{ fontSize: 11, color: C.yellow, marginTop: 6 }}>⚠️ Selecciona una talla para continuar</div>
-                    )}
-                  </div>
-                );
-              })()}
-
-              <Btn full
-                disabled={detail.sizes?.length > 0 && !selectedSizes[`size_modal_${detail.id}`]}
-                onClick={() => {
-                  const size = selectedSizes[`size_modal_${detail.id}`];
-                  onAddToCart({ ...detail, selectedSize: size }, detail.priceMode || "contado");
-                  setDetail(null);
-                }}>
-                {detail.sizes?.length > 0 && !selectedSizes[`size_modal_${detail.id}`]
-                  ? "👟 Elige una talla"
-                  : "🛒 Agregar al carrito"}
-              </Btn>
-            </div>
-          </div>
-          );
-        })()}
+        {detail && (
+          <ProductDetail
+            detail={detail}
+            selectedSizes={selectedSizes}
+            setSelectedSizes={setSelectedSizes}
+            onAddToCart={onAddToCart}
+            onClose={() => setDetail(null)}
+          />
+        )}
       </Modal>
     </div>
   );
