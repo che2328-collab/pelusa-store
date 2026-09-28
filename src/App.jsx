@@ -528,6 +528,9 @@ const Catalog = ({ products, onAddToCart, cart, categories }) => {
         ))}
       </div>
 
+      {/* Obsequios activos */}
+      <GiveawayDisplay />
+
       {/* Grid productos */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
         {visible.map(p => {
@@ -2474,6 +2477,186 @@ const AdminUsers = ({ users, orders, setUsers }) => {
 // ═══════════════════════════════════════════════════════════════
 //  ADMIN: CUENTAS BANCARIAS
 // ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//  OBSEQUIOS / SORTEOS
+// ═══════════════════════════════════════════════════════════════
+const GiveawayAdmin = () => {
+  const [giveaways, setGiveaways] = useState([]);
+  const [form, setForm] = useState({ title: "", description: "", image: "", endDate: "", endHours: 0, active: true });
+  const [modal, setModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    getDoc(doc(db, "config", "giveaways")).then(snap => {
+      if (snap.exists() && snap.data().list) setGiveaways(snap.data().list);
+    });
+  }, []);
+
+  const save = async () => {
+    if (!form.title) { alert("Escribe un título para el obsequio."); return; }
+    const item = {
+      ...form,
+      id: editing || String(Date.now()),
+      endTimestamp: form.endDate
+        ? new Date(form.endDate + "T23:59:59").getTime() + (+form.endHours || 0) * 3600000
+        : null,
+    };
+    const updated = editing
+      ? giveaways.map(g => g.id === editing ? item : g)
+      : [...giveaways, item];
+    await setDoc(doc(db, "config", "giveaways"), { list: updated });
+    setGiveaways(updated);
+    setForm({ title: "", description: "", image: "", endDate: "", endHours: 0, active: true });
+    setModal(false); setEditing(null);
+  };
+
+  const remove = async (id) => {
+    if (!confirm("¿Eliminar este obsequio?")) return;
+    const updated = giveaways.filter(g => g.id !== id);
+    await setDoc(doc(db, "config", "giveaways"), { list: updated });
+    setGiveaways(updated);
+  };
+
+  const toggleActive = async (id) => {
+    const updated = giveaways.map(g => g.id === id ? { ...g, active: !g.active } : g);
+    await setDoc(doc(db, "config", "giveaways"), { list: updated });
+    setGiveaways(updated);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ background: GOLD_DIM, border: `1px solid ${GOLD}33`, borderRadius: 12, padding: "14px 18px", fontSize: 14, color: C.muted }}>
+        🎁 Los obsequios activos se muestran a todos los clientes en su catálogo con cuenta regresiva.
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <Btn onClick={() => { setForm({ title: "", description: "", image: "", endDate: "", endHours: 0, active: true }); setEditing(null); setModal(true); }}>
+          🎁 Agregar obsequio
+        </Btn>
+      </div>
+
+      {giveaways.length === 0 && (
+        <div style={{ textAlign: "center", padding: 40, color: C.muted }}>No hay obsequios registrados aún.</div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+        {giveaways.map(g => {
+          const expired = g.endTimestamp && Date.now() > g.endTimestamp;
+          return (
+            <Card key={g.id} style={{ opacity: g.active && !expired ? 1 : 0.6, padding: 0, overflow: "hidden" }}>
+              {g.image && (
+                <div style={{ background: "#0a0a0a", height: 140 }}>
+                  <img src={g.image} alt={g.title} style={{ width: "100%", height: 140, objectFit: "contain" }} />
+                </div>
+              )}
+              <div style={{ padding: 16 }}>
+                <div style={{ fontFamily: "Cinzel", fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{g.title}</div>
+                {g.description && <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>{g.description}</div>}
+                {g.endTimestamp && (
+                  <div style={{ fontSize: 12, color: expired ? C.red : C.yellow, marginBottom: 10 }}>
+                    {expired ? "⏰ Tiempo expirado" : `⏱️ Termina: ${new Date(g.endTimestamp).toLocaleDateString("es-MX")}`}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Btn size="sm" onClick={() => { setForm({ ...g, endDate: g.endDate || "", endHours: g.endHours || 0 }); setEditing(g.id); setModal(true); }}>✏️ Editar</Btn>
+                  <Btn size="sm" variant={g.active ? "ghost" : "success"} onClick={() => toggleActive(g.id)}>
+                    {g.active ? "👁️ Ocultar" : "✅ Mostrar"}
+                  </Btn>
+                  <Btn size="sm" variant="danger" onClick={() => remove(g.id)}>🗑️</Btn>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Modal open={modal} onClose={() => { setModal(false); setEditing(null); }} title={editing ? "✏️ Editar obsequio" : "🎁 Nuevo obsequio"}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <Field label="Título del obsequio *"><input value={form.title} onChange={e => set("title", e.target.value)} placeholder="Ej: Perfume de temporada" /></Field>
+          <Field label="Descripción"><textarea rows={3} value={form.description} onChange={e => set("description", e.target.value)} placeholder="Describe el obsequio, condiciones, etc." style={{ resize: "vertical" }} /></Field>
+          <Field label="URL de imagen"><input value={form.image} onChange={e => set("image", e.target.value)} placeholder="https://..." /></Field>
+          {form.image && <img src={form.image} alt="" style={{ width: "100%", height: 140, objectFit: "contain", borderRadius: 10, background: "#0a0a0a" }} />}
+          <Field label="📅 Fecha límite del obsequio">
+            <input type="date" value={form.endDate} onChange={e => set("endDate", e.target.value)} min={today()} />
+          </Field>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: C.text }}>
+            <input type="checkbox" checked={!!form.active} onChange={e => set("active", e.target.checked)} style={{ width: "auto" }} />
+            Visible para clientes
+          </label>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Btn variant="ghost" onClick={() => { setModal(false); setEditing(null); }}>Cancelar</Btn>
+            <Btn onClick={save}>💾 Guardar</Btn>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+// Vista de obsequios para clientes
+const GiveawayDisplay = () => {
+  const [giveaways, setGiveaways] = useState([]);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    getDoc(doc(db, "config", "giveaways")).then(snap => {
+      if (snap.exists() && snap.data().list) setGiveaways(snap.data().list);
+    });
+    const interval = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const active = giveaways.filter(g => g.active && (!g.endTimestamp || now < g.endTimestamp));
+  if (active.length === 0) return null;
+
+  const timeLeft = (ts) => {
+    if (!ts) return null;
+    const diff = ts - now;
+    if (diff <= 0) return "⏰ Terminó";
+    const d = Math.floor(diff / 86400000);
+    const h = Math.floor((diff % 86400000) / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    if (d > 0) return `⏱️ ${d} día${d !== 1 ? "s" : ""} y ${h}h restantes`;
+    if (h > 0) return `⏱️ ${h}h ${m}m restantes`;
+    return `⏱️ ${m} minutos restantes`;
+  };
+
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <span style={{ fontSize: 22 }}>🎁</span>
+        <div style={{ fontFamily: "Cinzel", fontWeight: 700, fontSize: 16, color: GOLD }}>Obsequios especiales</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 14 }}>
+        {active.map(g => (
+          <div key={g.id} style={{
+            background: C.surface, border: `1px solid ${GOLD}44`,
+            borderRadius: 16, overflow: "hidden",
+            boxShadow: `0 4px 20px ${GOLD}15`,
+          }}>
+            {g.image && (
+              <div style={{ background: "#0a0a0a", height: 160, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <img src={g.image} alt={g.title} style={{ width: "100%", height: 160, objectFit: "contain" }} />
+              </div>
+            )}
+            <div style={{ padding: "14px 16px" }}>
+              <div style={{ display: "inline-block", background: GOLD_DIM, border: `1px solid ${GOLD}44`,
+                borderRadius: 999, padding: "2px 10px", fontSize: 10, color: GOLD, fontWeight: 700,
+                marginBottom: 8, letterSpacing: "0.08em" }}>🎁 OBSEQUIO</div>
+              <div style={{ fontFamily: "Cinzel", fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{g.title}</div>
+              {g.description && <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 8 }}>{g.description}</div>}
+              {g.endTimestamp && (
+                <div style={{ fontSize: 11, color: C.yellow, fontWeight: 600 }}>{timeLeft(g.endTimestamp)}</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const BankInfo = () => {
   const [banks, setBanks] = useState([
     { id: 1, bank: "BBVA", clabe: "", account: "", holder: "", alias: "" },
@@ -2559,7 +2742,7 @@ const AdminStats = ({ orders, products, users }) => {
     ...u,
     total: orders.filter(o => o.userId === u.id).reduce((s, o) => s + o.total, 0),
     count: orders.filter(o => o.userId === u.id).length,
-  })).sort((a, b) => b.total - a.total).slice(0, 5);
+  })).sort((a, b) => b.total - a.total).slice(0, 10);
 
   // Top productos
   const prodSales = {};
@@ -2658,6 +2841,7 @@ const ADMIN_TABS = [
   { id: "orders", label: "📋 Pedidos" },
   { id: "users", label: "👥 Clientes" },
   { id: "bank", label: "🏦 Cuentas" },
+  { id: "giveaways", label: "🎁 Obsequios" },
 ];
 
 const USER_TABS = [
@@ -2926,6 +3110,7 @@ export default function App() {
           {tab === "orders" && isAdmin && <AdminOrders orders={orders} setOrders={setOrdersFirebase} users={users} products={products} />}
           {tab === "users" && isAdmin && <AdminUsers users={users} orders={orders} setUsers={setUsers} />}
           {tab === "bank" && isAdmin && <BankInfo />}
+          {tab === "giveaways" && isAdmin && <GiveawayAdmin />}
         </div>
 
         <Modal open={cartOpen} onClose={() => setCartOpen(false)} title="Tu carrito" wide>
