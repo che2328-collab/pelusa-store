@@ -2742,7 +2742,7 @@ const AdminStats = ({ orders, products, users }) => {
     ...u,
     total: orders.filter(o => o.userId === u.id).reduce((s, o) => s + o.total, 0),
     count: orders.filter(o => o.userId === u.id).length,
-  })).sort((a, b) => b.total - a.total).slice(0, 10);
+  })).sort((a, b) => b.total - a.total).slice(0, 20);
 
   // Top productos
   const prodSales = {};
