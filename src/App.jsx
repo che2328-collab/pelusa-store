@@ -125,6 +125,23 @@ const nextSaturday = (fromDateStr) => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 };
 
+// Imagen de un producto dentro de un pedido (usa la del pedido o la del catálogo)
+const itemImage = (item, products) => {
+  const p = products?.find(x => String(x.id) === String(item.productId));
+  return item.image || p?.images?.filter(Boolean)[0] || p?.image || "";
+};
+
+// Texto con producto + enlace de imagen para mensajes de WhatsApp
+// (WhatsApp no deja adjuntar fotos desde un enlace; el enlace https se muestra con vista previa)
+const productsImagesText = (order, products) => {
+  const lines = (order.items || []).map(i => {
+    const url = itemImage(i, products);
+    const name = `${i.name}${i.selectedSize != null ? ` (Talla ${i.selectedSize})` : ""}`;
+    return /^https?:\/\//.test(url) ? `🛍️ ${name}\n${url}` : `🛍️ ${name}`;
+  });
+  return lines.join("\n\n");
+};
+
 // Devuelve firstPayDate válido: si ya pasó, calcula el siguiente sábado
 const validFirstPayDate = (date) => {
   if (!date) return nextSaturday();
@@ -959,7 +976,27 @@ const Cart = ({ cart, setCart, user, orders, setOrders, setProducts, products, o
 // ═══════════════════════════════════════════════════════════════
 //  MIS PEDIDOS (vista cliente)
 // ═══════════════════════════════════════════════════════════════
-const MyOrders = ({ orders, userId }) => {
+const OrderThumbs = ({ items, products, size = 44, max = 4 }) => {
+  const list = (items || []).map(i => ({ i, url: itemImage(i, products) }));
+  const shown = list.slice(0, max);
+  const extra = list.length - shown.length;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+      {shown.map(({ i, url }, idx) => (
+        <div key={idx} title={i.name} style={{
+          width: size, height: size, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+          background: "#0a0a0a", border: `1px solid ${C.border}`,
+          display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.45,
+        }}>
+          {url ? <img src={url} alt={i.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : "🛍️"}
+        </div>
+      ))}
+      {extra > 0 && <span style={{ fontSize: 11, color: C.muted, fontWeight: 700 }}>+{extra}</span>}
+    </div>
+  );
+};
+
+const MyOrders = ({ orders, userId, products }) => {
   const myOrders = orders.filter(o => o.userId === userId);
   const [sel, setSel] = useState(null);
 
@@ -978,7 +1015,8 @@ const MyOrders = ({ orders, userId }) => {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
             <div>
               <div style={{ fontFamily: "JetBrains Mono", fontSize: 13, color: C.muted }}>{o.id}</div>
-              <div style={{ fontSize: 14, color: C.muted, marginTop: 2 }}>{o.date}</div>
+              <div style={{ fontSize: 14, color: C.muted, marginTop: 2, marginBottom: 8 }}>{o.date}</div>
+              <OrderThumbs items={o.items} products={products} size={48} />
             </div>
             <Chip color={statusColor[o.status] || C.muted}>
               {o.status === "activo" ? "⏳ En crédito"
@@ -1690,7 +1728,7 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
     setOrders(os => [order, ...os]);
     setNewOrderModal(false);
     setNewOrder({ userId: "", items: [], type: "contado", payDueDate: "", semanasTotal: 5, note: "" });
-    setNewItem({ productId: "", name: "", price: "", qty: 1 });
+    setNewItem({ productId: "", name: "", price: "", qty: 1, image: "" });
     setCreatedOrder({ ...order, clientPhone: user?.phone || "" });
   };
 
@@ -1700,9 +1738,10 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
       productId: newItem.productId || String(Date.now()),
       name: newItem.name, price: +newItem.price, qty: +newItem.qty || 1,
       type: newOrder.type,
+      image: newItem.image || "",
     };
     setNewOrder(o => ({ ...o, items: [...o.items, item] }));
-    setNewItem({ productId: "", name: "", price: "", qty: 1 });
+    setNewItem({ productId: "", name: "", price: "", qty: 1, image: "" });
   };
 
   const statusColor = { pendiente_pago: C.yellow, activo: C.accent, pagado: C.green, cancelado: C.red };
@@ -1846,7 +1885,10 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
           <tbody>
             {filtered.map((o, i) => (
               <tr key={o.id} style={{ borderTop: `1px solid ${C.border}` }}>
-                <td style={{ padding: "12px 16px", fontFamily: "JetBrains Mono", fontSize: 12, color: C.muted }}>{o.id}</td>
+                <td style={{ padding: "12px 16px" }}>
+                  <div style={{ fontFamily: "JetBrains Mono", fontSize: 12, color: C.muted, marginBottom: 6 }}>{o.id}</div>
+                  <OrderThumbs items={o.items} products={products} size={40} />
+                </td>
                 <td style={{ padding: "12px 16px", fontSize: 14, fontWeight: 600 }}>{o.customerName}</td>
                 <td style={{ padding: "12px 16px", fontFamily: "JetBrains Mono", color: C.accent, fontWeight: 700 }}>{fmt(o.total)}</td>
                 <td style={{ padding: "12px 16px" }}>
@@ -1896,7 +1938,7 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
             {sel.type === "contado" && sel.status === "pendiente_pago" && (() => {
               const clientUser = users.find(u => u.id === sel.userId);
               const clientPhone = sel.customerPhone || clientUser?.phone || "";
-              const msgLiquidado = `Hola ${sel.customerName} 🎉\n\n¡Tu pedido *${sel.id}* ha sido *LIQUIDADO* en *Pelusa Store*! ✅\n\n💵 Monto pagado: *${fmt(sel.total)} MXN*\n📅 Fecha de pago: ${today()}\n\n¡Muchas gracias por tu pago puntual! 🙏 Seguimos a tus órdenes.`;
+              const msgLiquidado = `Hola ${sel.customerName} 🎉\n\n¡Tu pedido *${sel.id}* ha sido *LIQUIDADO* en *Pelusa Store*! ✅\n\n${productsImagesText(sel, products)}\n\n💵 Monto pagado: *${fmt(sel.total)} MXN*\n📅 Fecha de pago: ${today()}\n\n¡Muchas gracias por tu pago puntual! 🙏 Seguimos a tus órdenes.`;
               return (
                 <div style={{ background: C.greenDim, border: `1px solid ${C.green}44`, borderRadius: 12, padding: 16 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 6 }}>
@@ -1938,6 +1980,19 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                     💡 Primero registra el pago y luego manda el aviso al cliente por WhatsApp
                   </div>
                 </div>
+              );
+            })()}
+
+            {sel.type === "credito" && sel.status === "pagado" && (() => {
+              const cu = users.find(u => u.id === sel.userId);
+              const ph = sel.customerPhone || cu?.phone || "";
+              const msg = `Hola ${sel.customerName} 🎉\n\n¡Tu pedido *${sel.id}* ha sido *LIQUIDADO* en *Pelusa Store*! ✅\n\n${productsImagesText(sel, products)}\n\n💵 Total pagado: *${fmt(sel.total)} MXN*\n📅 Fecha: ${sel.abonos?.slice(-1)[0]?.date || today()}\n\n¡Gracias por cumplir con tus pagos! Tu crédito vale mucho 🌟`;
+              return (
+                <a href={buildWALink(msg, ph)} target="_blank" rel="noreferrer" style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  background: "#25D36622", border: "1px solid #25D36644", color: "#25D366",
+                  borderRadius: 8, padding: "10px 16px", fontSize: 13, fontWeight: 700, textDecoration: "none",
+                }}>📲 Avisar pedido liquidado</a>
               );
             })()}
 
@@ -1993,7 +2048,10 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
 
                         const msgRecordatorio = `Hola ${sel.customerName} 👋\n\nTe recordamos que tienes un abono pendiente de tu pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n💰 Abono semanal: $${sugerido.toLocaleString()} MXN\n📊 Saldo pendiente: $${sel.saldoPendiente.toLocaleString()} MXN\n📅 Fecha esperada: ${nextAbonoDate || "-"}\n\n¡Gracias por tu confianza! 🙏`;
                         const msgPenalizacion = hayAtraso ? `Hola ${sel.customerName} 👋\n\nTe informamos que tu abono del pedido *${sel.id}* en *Pelusa Store* tiene *${diasVencido} día${diasVencido !== 1 ? "s" : ""} de retraso* ⚠️\n\nPor política de crédito, se ha aplicado un interés del *5%*:\n\n💰 Abono original: $${sugerido.toLocaleString()} MXN\n➕ Interés (5%): $${interes.toLocaleString()} MXN\n💵 Total a pagar: *$${abonoConInteres.toLocaleString()} MXN*\n\nTe pedimos regularizar tu situación a la brevedad. Recuerda que tu crédito vale mucho. 🙏` : null;
-                        const msgConfirmacion = abonoAmt
+                        const liquidaConEste = !!abonoAmt && +abonoAmt >= sel.saldoPendiente;
+                        const msgConfirmacion = liquidaConEste
+                          ? `Hola ${sel.customerName} 🎉\n\n¡Tu pedido *${sel.id}* ha sido *LIQUIDADO* en *Pelusa Store*! ✅\n\n${productsImagesText(sel, products)}\n\n💵 Total pagado: *$${sel.total.toLocaleString()} MXN*\n📅 Fecha: ${today()}\n\n¡Gracias por cumplir con tus pagos! Tu crédito vale mucho 🌟`
+                          : abonoAmt
                           ? `Hola ${sel.customerName} ✅\n\nHemos registrado tu abono de *$${Number(abonoAmt).toLocaleString()} MXN* para el pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n📊 Nuevo saldo pendiente: *$${Math.max(0, sel.saldoPendiente - +abonoAmt).toLocaleString()} MXN*\n\n¡Muchas gracias por tu pago! 🙌`
                           : null;
                         return (
@@ -2265,6 +2323,7 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                   setNewItem(i => ({
                     ...i, productId: e.target.value,
                     name: p?.name || "",
+                    image: p?.images?.filter(Boolean)[0] || p?.image || "",
                     price: newOrder.type === "credito" ? (p?.priceCredito || "") : (p?.priceContado || ""),
                   }));
                 }}>
@@ -3104,7 +3163,7 @@ export default function App() {
           )}
 
           {tab === "catalog" && <Catalog products={products} onAddToCart={addToCart} cart={cart} categories={categories} />}
-          {tab === "orders" && !isAdmin && <MyOrders orders={orders} userId={currentUser.id} />}
+          {tab === "orders" && !isAdmin && <MyOrders orders={orders} userId={currentUser.id} products={products} />}
           {tab === "stats" && isAdmin && <AdminStats orders={orders} products={products} users={users} />}
           {tab === "products" && isAdmin && <AdminProducts products={products} setProducts={setProductsFirebase} categories={categories} setCategories={setCategories} />}
           {tab === "orders" && isAdmin && <AdminOrders orders={orders} setOrders={setOrdersFirebase} users={users} products={products} />}
