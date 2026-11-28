@@ -1041,6 +1041,12 @@ const MyOrders = ({ orders, userId, products }) => {
               ⚠️ Se aplica 5% de interés por pago tardío (tolerancia: {o.lateFeeDays || 1} día{o.lateFeeDays !== 1 ? "s" : ""})
             </div>
           )}
+          {o.type === "contado" && o.status === "pendiente_pago" && o.saldoPendiente < o.total && (
+            <div style={{ marginTop: 10, fontSize: 13, color: C.muted }}>
+              ⏩ Adelantos: <strong style={{ color: C.green }}>{fmt(o.total - o.saldoPendiente)}</strong>
+              {" · "}Te resta: <strong style={{ color: C.red }}>{fmt(o.saldoPendiente)}</strong>
+            </div>
+          )}
           {o.type === "contado" && o.payDueDate && o.status === "pendiente_pago" && (
             <div style={{
               marginTop: 10, padding: "8px 12px", borderRadius: 8,
@@ -1633,6 +1639,7 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
   const [filter, setFilter] = useState("todos");
   const [sel, setSel] = useState(null);
   const [abonoAmt, setAbonoAmt] = useState("");
+  const [adelantoAmt, setAdelantoAmt] = useState("");
   const [abonoNote, setAbonoNote] = useState("");
   const [editingOrder, setEditingOrder] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -1779,7 +1786,7 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
     const name = o.customerName?.split(" ")[0] || "amig@";
     if (o.type === "contado") {
       const dias = o.payDueDate === todayStr ? "hoy" : o.payDueDate === tomorrowStr ? "mañana" : `el ${o.payDueDate}`;
-      return `Hola ${name} 👋 Te escribimos de *Pelusa Store* 🛍️\n\nSolo un recordatorio amistoso: tu pago del pedido *${o.id}* es *${dias}* 😊\n\n💵 Monto: *${fmt(o.total)}*\n\nSi ya realizaste tu transferencia, manda tu comprobante y con gusto lo confirmamos. ¡Cualquier duda aquí estamos! 🙌`;
+      return `Hola ${name} 👋 Te escribimos de *Pelusa Store* 🛍️\n\nSolo un recordatorio amistoso: tu pago del pedido *${o.id}* es *${dias}* 😊\n\n💵 Monto: *${fmt(o.saldoPendiente ?? o.total)}*\n\nSi ya realizaste tu transferencia, manda tu comprobante y con gusto lo confirmamos. ¡Cualquier duda aquí estamos! 🙌`;
     }
     const abono = weekAbono(o.total, o.semanasTotal);
     const nextDate = getNextAbonoDate(o);
@@ -1944,6 +1951,12 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 6 }}>
                     💵 Registrar pago de contado
                   </div>
+                  {(sel.saldoPendiente ?? sel.total) < sel.total && (
+                    <div style={{ fontSize: 13, marginBottom: 10 }}>
+                      Adelantos: <strong style={{ color: C.green }}>{fmt(sel.total - sel.saldoPendiente)}</strong>
+                      {" · "}Resta: <strong style={{ color: C.red }}>{fmt(sel.saldoPendiente)}</strong>
+                    </div>
+                  )}
                   {sel.payDueDate && (
                     <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>
                       📅 Fecha límite acordada: <strong style={{ color: sel.payDueDate < today() ? C.red : C.yellow }}>{sel.payDueDate}</strong>
@@ -1952,12 +1965,13 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                   )}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <Btn variant="success" onClick={async () => {
-                      if (!confirm(`¿Registrar pago completo de ${fmt(sel.total)} para ${sel.customerName}?`)) return;
+                      const resto = sel.saldoPendiente ?? sel.total;
+                      if (!confirm(`¿Registrar pago completo de ${fmt(resto)} para ${sel.customerName}?`)) return;
                       const updated = {
                         ...sel,
                         status: "pagado",
                         saldoPendiente: 0,
-                        abonos: [...(sel.abonos || []), { date: today(), amount: sel.total, note: "Pago contado completo" }],
+                        abonos: [...(sel.abonos || []), { date: today(), amount: resto, note: resto < sel.total ? "Pago final contado" : "Pago contado completo" }],
                       };
                       try {
                         await setDoc(doc(db, "orders", String(sel.id)), updated);
@@ -1965,7 +1979,7 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                       setOrders(os => os.map(o => o.id === sel.id ? updated : o));
                       setSel(updated);
                     }}>
-                      ✅ Registrar pago completo — {fmt(sel.total)}
+                      ✅ Registrar pago completo — {fmt(sel.saldoPendiente ?? sel.total)}
                     </Btn>
                     <a href={buildWALink(msgLiquidado, clientPhone)} target="_blank" rel="noreferrer" style={{
                       display: "inline-flex", alignItems: "center", gap: 6,
@@ -1975,6 +1989,42 @@ const AdminOrders = ({ orders, setOrders, users, products }) => {
                       <svg width={14} height={14} viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                       📲 Avisar pago liquidado
                     </a>
+                  </div>
+                  {/* Adelantos parciales */}
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.green}33` }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>⏩ Adelantar pago (pago parcial)</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <input type="number" min={1} value={adelantoAmt} onChange={e => setAdelantoAmt(e.target.value)}
+                        placeholder="Monto del adelanto" style={{ flex: 1, minWidth: 140 }} />
+                      <Btn onClick={async () => {
+                        const amt = +adelantoAmt;
+                        const resto = sel.saldoPendiente ?? sel.total;
+                        if (!amt || amt <= 0) { alert("Escribe el monto del adelanto."); return; }
+                        if (amt > resto) { alert(`El adelanto no puede ser mayor al saldo pendiente (${fmt(resto)}).`); return; }
+                        const nuevoSaldo = resto - amt;
+                        const updated = {
+                          ...sel,
+                          saldoPendiente: nuevoSaldo,
+                          status: nuevoSaldo === 0 ? "pagado" : "pendiente_pago",
+                          abonos: [...(sel.abonos || []), { date: today(), amount: amt, note: nuevoSaldo === 0 ? "Pago final contado" : "Adelanto de pago" }],
+                        };
+                        try { await setDoc(doc(db, "orders", String(sel.id)), updated); } catch (e) {}
+                        setOrders(os => os.map(o => o.id === sel.id ? updated : o));
+                        setSel(updated);
+                        setAdelantoAmt("");
+                      }}>💾 Registrar adelanto</Btn>
+                      {+adelantoAmt > 0 && +adelantoAmt <= (sel.saldoPendiente ?? sel.total) && (
+                        <a href={buildWALink(`Hola ${sel.customerName} ✅\n\nRecibimos tu adelanto de *${fmt(+adelantoAmt)} MXN* para el pedido *${sel.id}* en *Pelusa Store* 🛍️\n\n📊 Saldo restante: *${fmt((sel.saldoPendiente ?? sel.total) - +adelantoAmt)} MXN*${sel.payDueDate ? `\n📅 Fecha límite: ${sel.payDueDate}` : ""}\n\n¡Gracias por adelantar tu pago! 🙌`, clientPhone)}
+                          target="_blank" rel="noreferrer" style={{
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                          background: "#25D36622", border: "1px solid #25D36644", color: "#25D366",
+                          borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, textDecoration: "none",
+                        }}>📲 Avisar adelanto</a>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted, marginTop: 6 }}>
+                      Si el adelanto cubre todo el saldo, el pedido se marca como pagado.
+                    </div>
                   </div>
                   <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
                     💡 Primero registra el pago y luego manda el aviso al cliente por WhatsApp
